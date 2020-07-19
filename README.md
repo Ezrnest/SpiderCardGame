@@ -2,7 +2,7 @@
 A spider card game written in Python.
 
 ## Run the game
-Simply runs TkInterface.py with python.
+Simply runs base/TkInterface.py with python.
 
 ## Introduction
 The game is basically the same as the spider card game defautly installed on Windows. 
