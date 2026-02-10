@@ -15,8 +15,11 @@ implementation of two kinds of interfaces.
 
 ## Modern UI controls
 - Menu:
-  - click `Difficulty` button to switch `Easy(1-suit) / Medium(2-suit) / Hard(4-suit)`.
-  - click `Start New Game` or `Daily Challenge`.
+  - click `Start New Game`, `Daily Challenge`, or `Game Settings`.
+- Settings page:
+  - `Difficulty`: `Easy(1-suit) / Medium(2-suit) / Hard(4-suit)`
+  - `Card Face`: `Classic / Minimal / Neo`
+  - `Theme`: `Forest / Ocean / Sunset`
 - In game:
   - Mouse drag-and-drop: press on a valid sequence, drag, release on destination stack.
   - Click the deck (top-right card pile) to deal.
@@ -24,6 +27,7 @@ implementation of two kinds of interfaces.
   - `D`: deal cards
   - `U`: undo
   - `R`: redo
+  - `S`: open settings page
   - `M`: back to menu
 
 ## Future plan
