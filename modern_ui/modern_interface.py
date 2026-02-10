@@ -111,6 +111,9 @@ class ModernTkInterface(Interface):
         self.front_images = {}
         self.pil_front_sources = {}
         self.runtime_tk_images = []
+        self.rotated_sprite_cache = {}
+        self.needs_redraw = True
+        self.cached_card_px = None
         self.load_persisted_settings()
 
     def run(self):
@@ -160,10 +163,10 @@ class ModernTkInterface(Interface):
     def load_style_images(self):
         self.style_back_images = {}
         self.pil_back_source = None
+        self.rotated_sprite_cache.clear()
         if Image is None or ImageTk is None:
             return
-        cw = max(1, int(self.width * CARD_WIDTH_RATIO))
-        ch = max(1, int(self.height * CARD_HEIGHT_RATIO))
+        cw, ch = self.card_pixel_size()
         style_asset = TEXTURED_STYLE_ASSETS.get(self.card_style)
         if style_asset is None:
             return
@@ -180,14 +183,14 @@ class ModernTkInterface(Interface):
     def load_front_images(self):
         self.front_images = {}
         self.pil_front_sources = {}
+        self.rotated_sprite_cache.clear()
         style_asset = TEXTURED_STYLE_ASSETS.get(self.card_style)
         if style_asset is None:
             return
         front_dir = Path(__file__).with_name("assets").joinpath("card_fronts", style_asset["front_dir"])
         if Image is None or ImageTk is None:
             return
-        cw = max(1, int(self.width * CARD_WIDTH_RATIO))
-        ch = max(1, int(self.height * CARD_HEIGHT_RATIO))
+        cw, ch = self.card_pixel_size()
         for suit in range(4):
             for num in range(13):
                 path = front_dir / f"s{suit}_n{num}.png"
@@ -202,12 +205,18 @@ class ModernTkInterface(Interface):
                     continue
 
     def refresh_style_assets(self):
+        self.cached_card_px = self.card_pixel_size()
+        self.rotated_sprite_cache.clear()
         self.load_style_images()
         if self.card_style in TEXTURED_STYLE_ASSETS:
             self.load_front_images()
         else:
             self.front_images = {}
             self.pil_front_sources = {}
+        self.needs_redraw = True
+
+    def request_redraw(self):
+        self.needs_redraw = True
 
     def fs(self, base):
         factor = FONT_SCALE_FACTOR[self.font_scale]
@@ -242,16 +251,19 @@ class ModernTkInterface(Interface):
         self.slot_status = list_slot_status()
         self.can_continue = has_saved_game(self.save_slot)
         self.message = "Start new game, continue saved game, daily challenge, or open settings."
+        self.request_redraw()
 
     def open_stats(self):
         self.stage = STATS
         self.active_buttons = []
         self.message = "Statistics overview."
+        self.request_redraw()
 
     def open_settings(self):
         self.stage = SETTINGS
         self.active_buttons = []
         self.message = "Configure difficulty, card style, and theme."
+        self.request_redraw()
 
     def cycle_save_slot(self):
         self.save_slot += 1
@@ -260,6 +272,7 @@ class ModernTkInterface(Interface):
         self.persist_settings()
         self.slot_status = list_slot_status()
         self.can_continue = has_saved_game(self.save_slot)
+        self.request_redraw()
 
     def begin_game_tracking(self):
         if self.test_mode:
@@ -339,12 +352,14 @@ class ModernTkInterface(Interface):
         self.message = f"{mode} started ({self.difficulty}). Drag cards to move."
         self.begin_game_tracking()
         self.save_current_game()
+        self.request_redraw()
 
     def continue_game(self):
         core = load_game(self.save_slot)
         if core is None:
             self.can_continue = False
             self.message = f"No valid saved game in slot {self.save_slot}."
+            self.request_redraw()
             return
         core.registerInterface(self)
         core.registerPlayer(DUMMY_PLAYER)
@@ -367,6 +382,7 @@ class ModernTkInterface(Interface):
         self.current_game_actions = 0
         self.current_game_recorded = False
         self.message = f"Continued saved game from slot {self.save_slot}."
+        self.request_redraw()
 
     def save_current_game(self):
         if self.core is None:
@@ -423,9 +439,11 @@ class ModernTkInterface(Interface):
         self.current_game_actions = 0
         self.current_game_recorded = True
         self.message = "Test duel: move A♠ from stack 1 onto stack 0 to win in one move."
+        self.request_redraw()
 
     def onStart(self):
         self.vm = CoreAdapter.snapshot(self.core)
+        self.request_redraw()
 
     def onWin(self):
         self.vm = CoreAdapter.snapshot(self.core)
@@ -447,11 +465,13 @@ class ModernTkInterface(Interface):
         self.spawn_firework_burst(self.width * 0.5, self.height * 0.3, 34)
         self.spawn_firework_burst(self.width * 0.35, self.height * 0.26, 28)
         self.spawn_firework_burst(self.width * 0.65, self.height * 0.26, 28)
+        self.request_redraw()
 
     def onEvent(self, event):
         self.vm = CoreAdapter.snapshot(self.core)
         self.anim_queue.append(CoreAdapter.event_to_animation(event))
         self.save_current_game()
+        self.request_redraw()
         super().onEvent(event)
 
     def onUndoEvent(self, event):
@@ -461,18 +481,22 @@ class ModernTkInterface(Interface):
         self.drag = None
         self.message = "Undo applied."
         self.save_current_game()
+        self.request_redraw()
         super().onUndoEvent(event)
 
     def notifyRedraw(self):
-        self.draw()
+        self.request_redraw()
 
     def on_resize(self, event):
         if event.widget != self.root:
             return
+        old_card_px = self.cached_card_px
         self.width = event.width
         self.height = event.height
-        self.refresh_style_assets()
-        self.draw()
+        new_card_px = self.card_pixel_size()
+        if old_card_px != new_card_px:
+            self.refresh_style_assets()
+        self.request_redraw()
 
     def on_key(self, event):
         key = event.keysym.lower()
@@ -499,6 +523,7 @@ class ModernTkInterface(Interface):
                 self.open_stats()
             elif key == "l":
                 self.cycle_save_slot()
+            self.request_redraw()
             return
 
         if self.stage == SETTINGS:
@@ -525,11 +550,14 @@ class ModernTkInterface(Interface):
                 self.persist_settings()
             elif key == "l":
                 self.cycle_save_slot()
+            self.request_redraw()
             return
 
         if self.stage == STATS:
             if key in ("escape", "p"):
                 self.open_menu()
+            else:
+                self.request_redraw()
             return
 
         if self.stage == GAME:
@@ -554,6 +582,7 @@ class ModernTkInterface(Interface):
                 self.message = self.build_hint_message()
             elif key == "p":
                 self.open_stats()
+            self.request_redraw()
 
     def on_press(self, event):
         if self.stage in (MENU, SETTINGS, STATS):
@@ -571,6 +600,7 @@ class ModernTkInterface(Interface):
             else:
                 self.message = "Dealt from deck."
                 self.current_game_actions += 1
+            self.request_redraw()
             return
 
         hit = self.find_stack_and_index(event.x, event.y)
@@ -579,6 +609,7 @@ class ModernTkInterface(Interface):
         stack_idx, card_idx = hit
         if not self.core.isValidSequence((stack_idx, card_idx)):
             self.message = "This sequence cannot be moved."
+            self.request_redraw()
             return
 
         src_x, src_y = self.card_position(stack_idx, card_idx)
@@ -596,6 +627,7 @@ class ModernTkInterface(Interface):
         self.hover_drop_valid = False
         self.message = f"Dragging {len(stack_cards)} card(s)..."
         self.spawn_spark_shower(src_x, src_y, 8)
+        self.request_redraw()
 
     def on_right_click(self, event):
         if self.stage != GAME:
@@ -604,8 +636,10 @@ class ModernTkInterface(Interface):
             self.drag = None
             self.hover_drop_stack = None
             self.hover_drop_valid = False
+            self.request_redraw()
         if not self.core.askUndo():
             self.message = "Cannot undo."
+            self.request_redraw()
 
     def on_drag(self, event):
         if self.stage != GAME or self.drag is None:
@@ -622,6 +656,7 @@ class ModernTkInterface(Interface):
 
         self.drag.x = target_x
         self.drag.y = event.y - self.drag.anchor_y
+        self.request_redraw()
 
         now = time.time()
         if now - self.last_drag_spark > 0.04:
@@ -651,6 +686,7 @@ class ModernTkInterface(Interface):
 
         if drop_stack is None:
             self.message = "Move canceled."
+            self.request_redraw()
             return
 
         self.pending_move_anim = {
@@ -670,6 +706,7 @@ class ModernTkInterface(Interface):
             self.current_game_actions += 1
             sx, sy = self.stack_origin(drop_stack)
             self.spawn_spark_shower(sx + self.card_size()[0] * 0.5, sy + 20, 8)
+        self.request_redraw()
 
     def on_page_click(self, x, y):
         for button in self.active_buttons:
@@ -709,6 +746,7 @@ class ModernTkInterface(Interface):
                     self.persist_settings()
                 elif action == "back_menu":
                     self.open_menu()
+                self.request_redraw()
                 return
 
     def tick(self):
@@ -726,8 +764,18 @@ class ModernTkInterface(Interface):
                 self.victory_anim_active = False
                 self.victory_panel_visible = True
                 self.message = "Victory summary ready. Press N for new game or M for menu."
+                self.request_redraw()
 
-        self.draw()
+        has_active_fx = bool(
+            self.anim_cards
+            or self.particles
+            or self.collect_cards
+            or self.victory_cards
+            or self.victory_anim_active
+        )
+        if self.needs_redraw or has_active_fx:
+            self.draw()
+            self.needs_redraw = False
         self.root.after(FPS_MS, self.tick)
 
     def format_stats_line(self, title, bucket):
@@ -811,6 +859,7 @@ class ModernTkInterface(Interface):
             end_time = self.anim_start + self.anim_duration + max(c.delay for c in self.anim_cards)
             if now >= end_time:
                 self.anim_cards.clear()
+                self.request_redraw()
             return
 
         if not self.anim_queue:
@@ -820,6 +869,7 @@ class ModernTkInterface(Interface):
         self.anim_cards = self.build_anim_cards(evt)
         if self.anim_cards:
             self.anim_start = now
+            self.request_redraw()
 
         if evt.type == "COMPLETE_SUIT":
             stack_idx = evt.payload["stack"]
@@ -828,6 +878,7 @@ class ModernTkInterface(Interface):
             sx, sy = self.stack_origin(stack_idx)
             cw, _ = self.card_size()
             self.spawn_firework_burst(sx + cw * 0.5, sy + 20, 24)
+            self.request_redraw()
 
     def build_anim_cards(self, animation_event):
         if self.vm is None:
@@ -1231,15 +1282,21 @@ class ModernTkInterface(Interface):
             if src is not None:
                 tw = max(2, int(w3d))
                 th = max(2, int(h))
-                img = src.resize((tw, th), RESAMPLE)
-                # Slight darkening near edge-on to increase depth perception.
-                shade = int(80 * (1.0 - depth_scale))
-                if shade > 0:
-                    overlay = Image.new("RGBA", img.size, (0, 0, 0, shade))
-                    img = Image.alpha_composite(img, overlay)
-                rot = img.rotate(-angle_deg, resample=ROTATE_RESAMPLE, expand=True)
-                tkimg = ImageTk.PhotoImage(rot)
-                self.runtime_tk_images.append(tkimg)
+                angle_q = int(round(angle_deg / 6.0) * 6)
+                shade_q = int(round((1.0 - depth_scale) * 8))
+                cache_key = (self.card_style, show_front, suit, num, tw, th, angle_q, shade_q)
+                tkimg = self.rotated_sprite_cache.get(cache_key)
+                if tkimg is None:
+                    img = src.resize((tw, th), RESAMPLE)
+                    shade = int(80 * (shade_q / 8.0))
+                    if shade > 0:
+                        overlay = Image.new("RGBA", img.size, (0, 0, 0, shade))
+                        img = Image.alpha_composite(img, overlay)
+                    rot = img.rotate(-angle_q, resample=ROTATE_RESAMPLE, expand=True)
+                    tkimg = ImageTk.PhotoImage(rot)
+                    self.rotated_sprite_cache[cache_key] = tkimg
+                    if len(self.rotated_sprite_cache) > 1200:
+                        self.rotated_sprite_cache.clear()
                 c.create_image(cx, cy, image=tkimg)
                 return
 
@@ -1554,6 +1611,9 @@ class ModernTkInterface(Interface):
 
     def card_size(self):
         return self.width * CARD_WIDTH_RATIO, self.height * CARD_HEIGHT_RATIO
+
+    def card_pixel_size(self):
+        return max(1, int(self.width * CARD_WIDTH_RATIO)), max(1, int(self.height * CARD_HEIGHT_RATIO))
 
     def visible_step(self):
         return self.height * VISIBLE_STEP_RATIO
