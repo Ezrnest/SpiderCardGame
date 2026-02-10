@@ -1,9 +1,9 @@
-from modern_ui.ui_config import NUMS, SUIT_FALLBACK
+from modern_ui.ui_config import NUMS, SUIT_SYMBOLS
 
 
 class CardFaceRenderer:
     def suit_symbol(self, suit):
-        return SUIT_FALLBACK[suit]
+        return SUIT_SYMBOLS[suit]
 
     def draw_card(self, canvas, x, y, hidden, suit, num, selected, cw, ch, theme, card_style):
         fill = theme["card_back"] if hidden else theme["card_front"]

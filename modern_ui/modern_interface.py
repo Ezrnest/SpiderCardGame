@@ -9,6 +9,7 @@ from base.Interface import Interface
 from modern_ui.adapter import CoreAdapter
 from modern_ui.card_face import CardFaceRenderer
 from modern_ui.entities import DragState, MovingCard, Particle
+from modern_ui.settings_store import load_settings, save_settings
 from modern_ui.ui_config import (
     ANIM_DURATION,
     CARD_HEIGHT_RATIO,
@@ -62,6 +63,7 @@ class ModernTkInterface(Interface):
 
         self.active_buttons = []
         self.card_renderer = CardFaceRenderer()
+        self.load_persisted_settings()
 
     def run(self):
         self.root = Tk()
@@ -75,7 +77,7 @@ class ModernTkInterface(Interface):
         self.root.bind("<B1-Motion>", self.on_drag)
         self.root.bind("<ButtonRelease-1>", self.on_release)
         self.root.bind("<Key>", self.on_key)
-        self.root.protocol("WM_DELETE_WINDOW", self.root.destroy)
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self.open_menu()
         self.tick()
@@ -84,6 +86,25 @@ class ModernTkInterface(Interface):
     @property
     def theme(self):
         return THEMES[self.theme_name]
+
+    def load_persisted_settings(self):
+        settings = load_settings()
+        self.difficulty = settings["difficulty"]
+        self.card_style = settings["card_style"]
+        self.theme_name = settings["theme_name"]
+
+    def persist_settings(self):
+        save_settings(
+            {
+                "difficulty": self.difficulty,
+                "card_style": self.card_style,
+                "theme_name": self.theme_name,
+            }
+        )
+
+    def on_close(self):
+        self.persist_settings()
+        self.root.destroy()
 
     def cycle_value(self, order, current):
         idx = order.index(current)
@@ -189,14 +210,19 @@ class ModernTkInterface(Interface):
                 self.open_menu()
             elif key == "1":
                 self.difficulty = "Easy"
+                self.persist_settings()
             elif key == "2":
                 self.difficulty = "Medium"
+                self.persist_settings()
             elif key == "4":
                 self.difficulty = "Hard"
+                self.persist_settings()
             elif key == "c":
                 self.card_style = self.cycle_value(CARD_STYLE_ORDER, self.card_style)
+                self.persist_settings()
             elif key == "t":
                 self.theme_name = self.cycle_value(THEME_ORDER, self.theme_name)
+                self.persist_settings()
             return
 
         if self.stage == GAME:
@@ -329,10 +355,13 @@ class ModernTkInterface(Interface):
                     self.open_settings()
                 elif action == "difficulty":
                     self.difficulty = self.cycle_value(DIFFICULTY_ORDER, self.difficulty)
+                    self.persist_settings()
                 elif action == "card_style":
                     self.card_style = self.cycle_value(CARD_STYLE_ORDER, self.card_style)
+                    self.persist_settings()
                 elif action == "theme":
                     self.theme_name = self.cycle_value(THEME_ORDER, self.theme_name)
+                    self.persist_settings()
                 elif action == "back_menu":
                     self.open_menu()
                 return

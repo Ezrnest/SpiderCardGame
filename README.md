@@ -20,6 +20,7 @@ implementation of two kinds of interfaces.
   - `Difficulty`: `Easy(1-suit) / Medium(2-suit) / Hard(4-suit)`
   - `Card Face`: `Classic / Minimal / Neo`
   - `Theme`: `Forest / Ocean / Sunset`
+  - Settings are persisted to `modern_ui/settings.ini`.
 - In game:
   - Mouse drag-and-drop: press on a valid sequence, drag, release on destination stack.
   - Click the deck (top-right card pile) to deal.

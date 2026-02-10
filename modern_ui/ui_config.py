@@ -15,7 +15,7 @@ DIFFICULTY_TO_SUITS = {"Easy": 1, "Medium": 2, "Hard": 4}
 DIFFICULTY_ORDER = ("Easy", "Medium", "Hard")
 CARD_STYLE_ORDER = ("Classic", "Minimal", "Neo")
 THEME_ORDER = ("Forest", "Ocean", "Sunset")
-SUIT_FALLBACK = ("S", "H", "C", "D")
+SUIT_SYMBOLS = ("♠", "♥", "♣", "♦")
 
 THEMES = {
     "Forest": {
