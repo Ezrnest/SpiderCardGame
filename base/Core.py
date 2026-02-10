@@ -537,9 +537,17 @@ class Core:
         def lineFilter(s: str):
             return not s.isspace() and not s.startswith("#")
 
+        def parseBool(s: str):
+            token = s.strip().lower()
+            if token in ("1", "true", "yes", "y"):
+                return True
+            if token in ("0", "false", "no", "n"):
+                return False
+            return bool(token)
+
         lines = list(filter(lineFilter, lines))
         self.finishedCount = int(lines[0])
-        self.gameEnded = bool(lines[1])
+        self.gameEnded = parseBool(lines[1])
         self.base = decodeStack(lines[2])
         stacks = []
         for line in lines[3:]:
