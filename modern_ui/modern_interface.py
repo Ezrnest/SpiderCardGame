@@ -4,7 +4,7 @@ import time
 from datetime import date
 from tkinter import BOTH, Canvas, Tk, messagebox
 
-from base.Core import Core, DUMMY_PLAYER, GameConfig
+from base.Core import Card, Core, DUMMY_PLAYER, GameConfig, encodeStack
 from base.Interface import Interface
 from modern_ui.adapter import CoreAdapter
 from modern_ui.card_face import CardFaceRenderer
@@ -49,6 +49,7 @@ class ModernTkInterface(Interface):
         self.theme_name = "Forest"
         self.font_scale = "Normal"
         self.daily_mode = False
+        self.test_mode = False
         self.current_seed = None
 
         self.anim_queue = []
@@ -117,7 +118,7 @@ class ModernTkInterface(Interface):
         if not messagebox.askyesno("Exit", "Exit the game now?"):
             return
         if self.stage == GAME and self.core is not None and self.vm is not None:
-            save_game(self.core)
+            self.save_current_game()
         self.persist_settings()
         self.root.destroy()
 
@@ -167,6 +168,7 @@ class ModernTkInterface(Interface):
         core.registerPlayer(DUMMY_PLAYER)
         core.startGame(self.build_config(daily))
         self.vm = CoreAdapter.snapshot(core)
+        self.test_mode = False
 
         self.stage = GAME
         self.drag = None
@@ -180,7 +182,7 @@ class ModernTkInterface(Interface):
 
         mode = "Daily Challenge" if self.daily_mode else "Normal"
         self.message = f"{mode} started ({self.difficulty}). Drag cards to move."
-        save_game(self.core)
+        self.save_current_game()
 
     def continue_game(self):
         core = load_game()
@@ -200,9 +202,61 @@ class ModernTkInterface(Interface):
         self.anim_queue.clear()
         self.anim_cards.clear()
         self.particles.clear()
+        self.test_mode = False
         self.daily_mode = False
         self.current_seed = None
         self.message = "Continued saved game."
+
+    def save_current_game(self):
+        if self.core is None:
+            return
+        if self.test_mode:
+            return
+        save_game(self.core)
+
+    @staticmethod
+    def visible_card(suit, num):
+        card = Card.fromSuitAndNum(suit, num)
+        card.hidden = False
+        return card
+
+    def build_test_stacks(self):
+        suit = 0  # Spade
+        stack0 = [self.visible_card(suit, n) for n in range(12, 0, -1)]  # K..2
+        stack1 = [self.visible_card(suit, 0)]  # A, move this to stack0 to finish one full pile
+        stack2 = [self.visible_card(1, 11), self.visible_card(1, 10), self.visible_card(1, 9)]
+        stack3 = [self.visible_card(2, 10), self.visible_card(2, 9), self.visible_card(2, 8)]
+        stack4 = [self.visible_card(3, 9), self.visible_card(3, 8), self.visible_card(3, 7)]
+        stack5 = [self.visible_card(0, 8), self.visible_card(0, 7), self.visible_card(0, 6)]
+        stack6 = [self.visible_card(1, 5), self.visible_card(1, 4)]
+        stack7 = [self.visible_card(2, 6)]
+        stack8 = []
+        stack9 = [self.visible_card(3, 4), self.visible_card(3, 3)]
+        return [stack0, stack1, stack2, stack3, stack4, stack5, stack6, stack7, stack8, stack9]
+
+    def start_test_game(self):
+        stacks = self.build_test_stacks()
+        lines = ["0", "False", encodeStack([])]
+        lines.extend(encodeStack(stack) for stack in stacks)
+        core = Core()
+        core.loadGameFromLines(lines)
+        core.registerInterface(self)
+        core.registerPlayer(DUMMY_PLAYER)
+        core.resumeGame()
+        self.vm = CoreAdapter.snapshot(core)
+
+        self.stage = GAME
+        self.drag = None
+        self.hover_drop_stack = None
+        self.hover_drop_valid = False
+        self.pending_move_anim = None
+        self.anim_queue.clear()
+        self.anim_cards.clear()
+        self.particles.clear()
+        self.test_mode = True
+        self.daily_mode = False
+        self.current_seed = None
+        self.message = "Test duel: move A♠ from stack 1 onto stack 0 to complete one pile."
 
     def onStart(self):
         self.vm = CoreAdapter.snapshot(self.core)
@@ -217,7 +271,7 @@ class ModernTkInterface(Interface):
     def onEvent(self, event):
         self.vm = CoreAdapter.snapshot(self.core)
         self.anim_queue.append(CoreAdapter.event_to_animation(event))
-        save_game(self.core)
+        self.save_current_game()
         super().onEvent(event)
 
     def onUndoEvent(self, event):
@@ -226,7 +280,7 @@ class ModernTkInterface(Interface):
         self.anim_queue.clear()
         self.drag = None
         self.message = "Undo applied."
-        save_game(self.core)
+        self.save_current_game()
         super().onUndoEvent(event)
 
     def notifyRedraw(self):
@@ -250,6 +304,8 @@ class ModernTkInterface(Interface):
                 if not self.confirm_overwrite_saved_game("a new game"):
                     return
                 self.start_new_game(daily=False)
+            elif key == "t":
+                self.start_test_game()
             elif key == "c":
                 self.continue_game()
             elif key == "d":
