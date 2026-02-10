@@ -14,7 +14,13 @@ FPS_MS = 16
 NUMS = ("A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K")
 DIFFICULTY_TO_SUITS = {"Easy": 1, "Medium": 2, "Hard": 4}
 DIFFICULTY_ORDER = ("Easy", "Medium", "Hard")
-CARD_STYLE_ORDER = ("Classic", "Minimal", "Neo")
+CARD_STYLE_ORDER = ("Classic", "Minimal", "Neo", "ArtDeck", "NeoGrid", "VintageGold", "SakuraInk")
+TEXTURED_STYLE_ASSETS = {
+    "ArtDeck": {"front_dir": "artdeck", "back_file": "artdeck_back.png"},
+    "NeoGrid": {"front_dir": "neogrid", "back_file": "neogrid_back.png"},
+    "VintageGold": {"front_dir": "vintagegold", "back_file": "vintagegold_back.png"},
+    "SakuraInk": {"front_dir": "sakuraink", "back_file": "sakuraink_back.png"},
+}
 THEME_ORDER = ("Forest", "Ocean", "Sunset")
 FONT_SCALE_ORDER = ("Small", "Normal", "Large", "X-Large", "Huge")
 FONT_SCALE_FACTOR = {
@@ -25,12 +31,6 @@ FONT_SCALE_FACTOR = {
     "Huge": 1.7,
 }
 SUIT_SYMBOLS = ("♠", "♥", "♣", "♦")
-BACK_PATTERN_ORDER = ("ClassicDrawn", "BlueWeave", "EmeraldGlyph", "SunsetArc")
-BACK_PATTERN_FILES = {
-    "BlueWeave": "blue_weave.ppm",
-    "EmeraldGlyph": "emerald_glyph.ppm",
-    "SunsetArc": "sunset_arc.ppm",
-}
 
 THEMES = {
     "Forest": {

@@ -19,8 +19,7 @@ implementation of two kinds of interfaces.
   - `Save Slot` supports 3 slots; `Continue Game` uses current slot.
 - Settings page:
   - `Difficulty`: `Easy(1-suit) / Medium(2-suit) / Hard(4-suit)`
-  - `Card Face`: `Classic / Minimal / Neo`
-  - `Back Pattern`: `ClassicDrawn / BlueWeave / EmeraldGlyph / SunsetArc`
+  - `Card Style`: `Classic / Minimal / Neo / ArtDeck / NeoGrid / VintageGold / SakuraInk` (front and back are unified per style)
   - `Theme`: `Forest / Ocean / Sunset`
   - `Font Scale`: `Small / Normal / Large / X-Large / Huge`
   - Settings are persisted to `modern_ui/settings.ini`.
@@ -38,7 +37,11 @@ implementation of two kinds of interfaces.
   - `M`: back to menu
   - `H`: Hint+ (top candidate moves with risk notes)
   - `P`: open statistics page
-  - In settings page: `F` cycles font scale, `B` cycles card back pattern.
+  - In settings page: `F` cycles font scale.
+  - Deck generators:
+    - `python3 modern_ui/assets/scripts/generate_art_deck.py`
+    - `python3 modern_ui/assets/scripts/generate_extra_decks.py`
+  - Generators output both display-size assets and HD source assets.
 
 ## Future plan
 The latest version of spider card game on Windows10 can generate games of different difficulty. 

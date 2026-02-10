@@ -1,14 +1,13 @@
 import configparser
 from pathlib import Path
 
-from modern_ui.ui_config import BACK_PATTERN_ORDER, CARD_STYLE_ORDER, DIFFICULTY_ORDER, FONT_SCALE_ORDER, THEME_ORDER
+from modern_ui.ui_config import CARD_STYLE_ORDER, DIFFICULTY_ORDER, FONT_SCALE_ORDER, THEME_ORDER
 
 SETTINGS_PATH = Path(__file__).with_name("settings.ini")
 
 DEFAULT_SETTINGS = {
     "difficulty": "Medium",
     "card_style": "Classic",
-    "back_pattern": "ClassicDrawn",
     "theme_name": "Forest",
     "font_scale": "Normal",
     "save_slot": "1",
@@ -22,8 +21,6 @@ def _sanitize(settings):
         data["difficulty"] = DEFAULT_SETTINGS["difficulty"]
     if data["card_style"] not in CARD_STYLE_ORDER:
         data["card_style"] = DEFAULT_SETTINGS["card_style"]
-    if data["back_pattern"] not in BACK_PATTERN_ORDER:
-        data["back_pattern"] = DEFAULT_SETTINGS["back_pattern"]
     if data["theme_name"] not in THEME_ORDER:
         data["theme_name"] = DEFAULT_SETTINGS["theme_name"]
     if data["font_scale"] not in FONT_SCALE_ORDER:
@@ -53,7 +50,6 @@ def load_settings():
     raw = {
         "difficulty": parser["ui"].get("difficulty", DEFAULT_SETTINGS["difficulty"]),
         "card_style": parser["ui"].get("card_style", DEFAULT_SETTINGS["card_style"]),
-        "back_pattern": parser["ui"].get("back_pattern", DEFAULT_SETTINGS["back_pattern"]),
         "theme_name": parser["ui"].get("theme_name", DEFAULT_SETTINGS["theme_name"]),
         "font_scale": parser["ui"].get("font_scale", DEFAULT_SETTINGS["font_scale"]),
         "save_slot": parser["ui"].get("save_slot", DEFAULT_SETTINGS["save_slot"]),

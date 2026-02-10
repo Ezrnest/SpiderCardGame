@@ -36,3 +36,34 @@ class Particle:
     ttl: float
     size: float
     color: str
+
+
+@dataclass
+class CollectCard:
+    suit: int
+    num: int
+    start_x: float
+    start_y: float
+    end_x: float
+    end_y: float
+    born: float
+    duration: float
+    angle0: float
+    angle1: float
+
+
+@dataclass
+class VictoryCard:
+    x: float
+    y: float
+    vx: float
+    vy: float
+    angle: float
+    va: float
+    born: float
+    ttl: float
+    suit: int
+    num: int
+    scale: float
+    tilt: float
+    vtilt: float
