@@ -20,6 +20,7 @@ implementation of two kinds of interfaces.
   - `Difficulty`: `Easy(1-suit) / Medium(2-suit) / Hard(4-suit)`
   - `Card Face`: `Classic / Minimal / Neo`
   - `Theme`: `Forest / Ocean / Sunset`
+  - `Font Scale`: `Small / Normal / Large`
   - Settings are persisted to `modern_ui/settings.ini`.
 - In game:
   - Mouse drag-and-drop: press on a valid sequence, drag, release on destination stack.
@@ -30,6 +31,7 @@ implementation of two kinds of interfaces.
   - `R`: redo
   - `S`: open settings page
   - `M`: back to menu
+  - In settings page: `F` cycles font scale.
 
 ## Future plan
 The latest version of spider card game on Windows10 can generate games of different difficulty. 

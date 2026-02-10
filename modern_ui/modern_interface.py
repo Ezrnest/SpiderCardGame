@@ -17,6 +17,8 @@ from modern_ui.ui_config import (
     CARD_WIDTH_RATIO,
     DIFFICULTY_ORDER,
     DIFFICULTY_TO_SUITS,
+    FONT_SCALE_FACTOR,
+    FONT_SCALE_ORDER,
     FPS_MS,
     GAME,
     MENU,
@@ -44,6 +46,7 @@ class ModernTkInterface(Interface):
         self.difficulty = "Medium"
         self.card_style = "Classic"
         self.theme_name = "Forest"
+        self.font_scale = "Normal"
         self.daily_mode = False
         self.current_seed = None
 
@@ -92,6 +95,7 @@ class ModernTkInterface(Interface):
         self.difficulty = settings["difficulty"]
         self.card_style = settings["card_style"]
         self.theme_name = settings["theme_name"]
+        self.font_scale = settings["font_scale"]
 
     def persist_settings(self):
         save_settings(
@@ -99,8 +103,13 @@ class ModernTkInterface(Interface):
                 "difficulty": self.difficulty,
                 "card_style": self.card_style,
                 "theme_name": self.theme_name,
+                "font_scale": self.font_scale,
             }
         )
+
+    def fs(self, base):
+        factor = FONT_SCALE_FACTOR[self.font_scale]
+        return max(8, int(base * factor))
 
     def on_close(self):
         self.persist_settings()
@@ -222,6 +231,9 @@ class ModernTkInterface(Interface):
                 self.persist_settings()
             elif key == "t":
                 self.theme_name = self.cycle_value(THEME_ORDER, self.theme_name)
+                self.persist_settings()
+            elif key == "f":
+                self.font_scale = self.cycle_value(FONT_SCALE_ORDER, self.font_scale)
                 self.persist_settings()
             return
 
@@ -361,6 +373,9 @@ class ModernTkInterface(Interface):
                     self.persist_settings()
                 elif action == "theme":
                     self.theme_name = self.cycle_value(THEME_ORDER, self.theme_name)
+                    self.persist_settings()
+                elif action == "font_scale":
+                    self.font_scale = self.cycle_value(FONT_SCALE_ORDER, self.font_scale)
                     self.persist_settings()
                 elif action == "back_menu":
                     self.open_menu()
@@ -526,13 +541,13 @@ class ModernTkInterface(Interface):
         theme = self.theme
         self.active_buttons = []
 
-        c.create_text(self.width * 0.5, self.height * 0.2, text="Spider Card Modern", fill=theme["hud_text"], font="Helvetica 48 bold")
+        c.create_text(self.width * 0.5, self.height * 0.2, text="Spider Card Modern", fill=theme["hud_text"], font=f"Helvetica {self.fs(48)} bold")
         c.create_text(
             self.width * 0.5,
             self.height * 0.2 + 52,
             text="Animated Spider Solitaire with customizable visuals",
             fill=theme["hud_subtext"],
-            font="Helvetica 16",
+            font=f"Helvetica {self.fs(16)}",
         )
 
         bw = min(420, int(self.width * 0.42))
@@ -552,27 +567,27 @@ class ModernTkInterface(Interface):
             y2 = y1 + bh
             self.active_buttons.append({"action": action, "rect": (x1, y1, x2, y2)})
             c.create_rectangle(x1, y1, x2, y2, fill=fill, outline="#f8fafc", width=2)
-            c.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=label, fill="#f8fafc", font="Helvetica 16 bold")
+            c.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=label, fill="#f8fafc", font=f"Helvetica {self.fs(16)} bold")
 
         c.create_text(
             self.width * 0.5,
             self.height - 34,
             text="Keys: N new game, D daily challenge, S settings",
             fill=theme["hud_subtext"],
-            font="Helvetica 13",
+            font=f"Helvetica {self.fs(13)}",
         )
 
     def draw_settings(self, c):
         theme = self.theme
         self.active_buttons = []
 
-        c.create_text(self.width * 0.5, self.height * 0.16, text="Game Settings", fill=theme["hud_text"], font="Helvetica 42 bold")
+        c.create_text(self.width * 0.5, self.height * 0.16, text="Game Settings", fill=theme["hud_text"], font=f"Helvetica {self.fs(42)} bold")
         c.create_text(
             self.width * 0.5,
             self.height * 0.16 + 46,
             text="Difficulty, card face style, and board theme",
             fill=theme["hud_subtext"],
-            font="Helvetica 15",
+            font=f"Helvetica {self.fs(15)}",
         )
 
         bw = min(560, int(self.width * 0.54))
@@ -583,6 +598,7 @@ class ModernTkInterface(Interface):
             (f"Difficulty: {self.difficulty}", "difficulty", "#0f766e"),
             (f"Card Face: {self.card_style}", "card_style", "#4338ca"),
             (f"Theme: {self.theme_name}", "theme", "#9a3412"),
+            (f"Font Scale: {self.font_scale}", "font_scale", "#0f766e"),
             ("Back To Menu", "back_menu", "#374151"),
         ]
 
@@ -593,7 +609,7 @@ class ModernTkInterface(Interface):
             y2 = y1 + bh
             self.active_buttons.append({"action": action, "rect": (x1, y1, x2, y2)})
             c.create_rectangle(x1, y1, x2, y2, fill=fill, outline="#f8fafc", width=2)
-            c.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=label, fill="#f8fafc", font="Helvetica 17 bold")
+            c.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=label, fill="#f8fafc", font=f"Helvetica {self.fs(17)} bold")
 
         preview_y = self.height * 0.78
         cx = self.width * 0.5 - self.card_size()[0] * 1.1
@@ -603,9 +619,9 @@ class ModernTkInterface(Interface):
         c.create_text(
             self.width * 0.5,
             self.height - 26,
-            text="Keys: 1/2/4 set difficulty, C cycle card face, T cycle theme, Esc/M menu",
+            text="Keys: 1/2/4 difficulty, C card face, T theme, F font scale, Esc/M menu",
             fill=theme["hud_subtext"],
-            font="Helvetica 12",
+            font=f"Helvetica {self.fs(12)}",
         )
 
     def draw_base_and_hud(self, c):
@@ -622,20 +638,20 @@ class ModernTkInterface(Interface):
             outline=theme["deck_outline"],
             width=2,
         )
-        c.create_text(deck_x + cw / 2, deck_y + ch / 2, text=str(self.vm.base_count), fill=theme["hud_text"], font="Helvetica 14 bold")
+        c.create_text(deck_x + cw / 2, deck_y + ch / 2, text=str(self.vm.base_count), fill=theme["hud_text"], font=f"Helvetica {self.fs(14)} bold")
 
-        c.create_text(16, 16, anchor="nw", text=f"Finished: {self.vm.finished_count}", fill=theme["hud_text"], font="Helvetica 16 bold")
+        c.create_text(16, 16, anchor="nw", text=f"Finished: {self.vm.finished_count}", fill=theme["hud_text"], font=f"Helvetica {self.fs(16)} bold")
         mode = "Daily" if self.daily_mode else "Normal"
         seed_info = f" | seed {self.current_seed}" if self.current_seed is not None else ""
         c.create_text(
             16,
             42,
             anchor="nw",
-            text=f"Mode: {mode} | Difficulty: {self.difficulty} | Face: {self.card_style} | Theme: {self.theme_name}{seed_info}",
+            text=f"Mode: {mode} | Difficulty: {self.difficulty} | Face: {self.card_style} | Theme: {self.theme_name} | Font: {self.font_scale}{seed_info}",
             fill=theme["hud_subtext"],
-            font="Helvetica 12",
+            font=f"Helvetica {self.fs(12)}",
         )
-        c.create_text(16, self.height - 20, anchor="sw", text=self.message, fill=theme["hud_subtext"], font="Helvetica 12")
+        c.create_text(16, self.height - 20, anchor="sw", text=self.message, fill=theme["hud_subtext"], font=f"Helvetica {self.fs(12)}")
 
     def draw_stack(self, c, stack_idx, cards, suppressed):
         theme = self.theme
@@ -706,6 +722,7 @@ class ModernTkInterface(Interface):
             ch=ch,
             theme=self.theme,
             card_style=self.card_style,
+            font_scale=FONT_SCALE_FACTOR[self.font_scale],
         )
 
     def find_stack_and_index(self, x, y):
