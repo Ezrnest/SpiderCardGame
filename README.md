@@ -3,7 +3,7 @@ A spider card game written in Python.
 
 ## Run the game
 Simply runs base/TkInterface.py with python.
-Modern prototype UI (with animation queue) can be started with:
+Modern prototype UI (menu + drag and drop + effects) can be started with:
 `python -m modern_ui.run`
 
 ## Introduction
@@ -14,11 +14,17 @@ The file `Core.py` contains the basic logic of the game. The files `CommandLine.
 implementation of two kinds of interfaces.
 
 ## Modern UI controls
-- Mouse: click source sequence, then click destination stack.
-- `N`: new game
-- `D`: deal cards
-- `U`: undo
-- `R`: redo
+- Menu:
+  - click `Difficulty` button to switch `Easy(1-suit) / Medium(2-suit) / Hard(4-suit)`.
+  - click `Start New Game` or `Daily Challenge`.
+- In game:
+  - Mouse drag-and-drop: press on a valid sequence, drag, release on destination stack.
+  - Click the deck (top-right card pile) to deal.
+  - `N`: start a normal new game
+  - `D`: deal cards
+  - `U`: undo
+  - `R`: redo
+  - `M`: back to menu
 
 ## Future plan
 The latest version of spider card game on Windows10 can generate games of different difficulty. 

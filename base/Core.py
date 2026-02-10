@@ -72,7 +72,7 @@ class Card:
 DUMMY_CARD = Card(0)
 
 
-def initCards(suits, pileCount):
+def initCards(suits, pileCount, rng=None):
     lst = []
     for i in range(suits):
         remainCount = suits - i
@@ -81,7 +81,10 @@ def initCards(suits, pileCount):
         for n in range(Card.NUM_PER_SUIT):
             for _ in range(count):
                 lst.append(Card.fromSuitAndNum(i, n))
-    random.shuffle(lst)
+    if rng is None:
+        random.shuffle(lst)
+    else:
+        rng.shuffle(lst)
     return lst
 
 
@@ -120,6 +123,7 @@ class GameConfig:
         self.piles = 8
         self.stackCount = 10
         self.initialDealt = 54
+        self.seed = None
         self.gameCode = None
         self.professionalMode = 0
         self.profStart = 0
@@ -172,7 +176,9 @@ class GameConfig:
                 return decodeStack(self.gameCode)
             except:
                 pass
-        return initCards(self.suits, self.piles)
+        if self.seed is None:
+            return initCards(self.suits, self.piles)
+        return initCards(self.suits, self.piles, random.Random(self.seed))
 
 
 class GameEvent:

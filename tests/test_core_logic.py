@@ -1,6 +1,6 @@
 import unittest
 
-from base.Core import Card, Core, DUMMY_PLAYER, encodeStack
+from base.Core import Card, Core, DUMMY_PLAYER, GameConfig, encodeStack
 from base.Interface import Interface
 
 
@@ -106,6 +106,29 @@ class CoreTestCase(unittest.TestCase):
         core = Core()
         core.loadGameFromLines(["0", "False", "empty", "empty"])
         self.assertFalse(core.gameEnded)
+
+    def test_seeded_start_is_deterministic(self):
+        config = GameConfig()
+        config.seed = 20260210
+
+        core1 = Core()
+        ui1 = TestInterface()
+        core1.registerInterface(ui1)
+        core1.registerPlayer(DUMMY_PLAYER)
+        core1.startGame(config)
+        s1 = [encodeStack(s) for s in core1.stacks]
+        b1 = encodeStack(core1.base)
+
+        core2 = Core()
+        ui2 = TestInterface()
+        core2.registerInterface(ui2)
+        core2.registerPlayer(DUMMY_PLAYER)
+        core2.startGame(config)
+        s2 = [encodeStack(s) for s in core2.stacks]
+        b2 = encodeStack(core2.base)
+
+        self.assertEqual(s1, s2)
+        self.assertEqual(b1, b2)
 
 
 if __name__ == "__main__":
