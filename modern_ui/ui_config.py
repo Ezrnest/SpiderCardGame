@@ -15,8 +15,14 @@ DIFFICULTY_TO_SUITS = {"Easy": 1, "Medium": 2, "Hard": 4}
 DIFFICULTY_ORDER = ("Easy", "Medium", "Hard")
 CARD_STYLE_ORDER = ("Classic", "Minimal", "Neo")
 THEME_ORDER = ("Forest", "Ocean", "Sunset")
-FONT_SCALE_ORDER = ("Small", "Normal", "Large")
-FONT_SCALE_FACTOR = {"Small": 0.9, "Normal": 1.0, "Large": 1.15}
+FONT_SCALE_ORDER = ("Small", "Normal", "Large", "X-Large", "Huge")
+FONT_SCALE_FACTOR = {
+    "Small": 0.95,
+    "Normal": 1.1,
+    "Large": 1.25,
+    "X-Large": 1.45,
+    "Huge": 1.7,
+}
 SUIT_SYMBOLS = ("♠", "♥", "♣", "♦")
 
 THEMES = {

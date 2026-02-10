@@ -15,17 +15,19 @@ implementation of two kinds of interfaces.
 
 ## Modern UI controls
 - Menu:
-  - click `Start New Game`, `Daily Challenge`, or `Game Settings`.
+  - click `Start New Game`, `Continue Game`, `Daily Challenge`, or `Game Settings`.
 - Settings page:
   - `Difficulty`: `Easy(1-suit) / Medium(2-suit) / Hard(4-suit)`
   - `Card Face`: `Classic / Minimal / Neo`
   - `Theme`: `Forest / Ocean / Sunset`
-  - `Font Scale`: `Small / Normal / Large`
+  - `Font Scale`: `Small / Normal / Large / X-Large / Huge`
   - Settings are persisted to `modern_ui/settings.ini`.
+  - Game progress is auto-saved to `modern_ui/savegame.txt`.
 - In game:
   - Mouse drag-and-drop: press on a valid sequence, drag, release on destination stack.
   - Click the deck (top-right card pile) to deal.
   - `N`: start a normal new game
+  - `C`: continue saved game (from menu)
   - `D`: deal cards
   - `U`: undo
   - `R`: redo

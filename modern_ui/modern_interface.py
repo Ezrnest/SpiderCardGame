@@ -2,13 +2,14 @@ import math
 import random
 import time
 from datetime import date
-from tkinter import BOTH, Canvas, Tk
+from tkinter import BOTH, Canvas, Tk, messagebox
 
 from base.Core import Core, DUMMY_PLAYER, GameConfig
 from base.Interface import Interface
 from modern_ui.adapter import CoreAdapter
 from modern_ui.card_face import CardFaceRenderer
 from modern_ui.entities import DragState, MovingCard, Particle
+from modern_ui.game_store import has_saved_game, load_game, save_game
 from modern_ui.settings_store import load_settings, save_settings
 from modern_ui.ui_config import (
     ANIM_DURATION,
@@ -65,6 +66,7 @@ class ModernTkInterface(Interface):
         self.last_drag_spark = 0.0
 
         self.active_buttons = []
+        self.can_continue = False
         self.card_renderer = CardFaceRenderer()
         self.load_persisted_settings()
 
@@ -112,8 +114,20 @@ class ModernTkInterface(Interface):
         return max(8, int(base * factor))
 
     def on_close(self):
+        if not messagebox.askyesno("Exit", "Exit the game now?"):
+            return
+        if self.stage == GAME and self.core is not None and self.vm is not None:
+            save_game(self.core)
         self.persist_settings()
         self.root.destroy()
+
+    def confirm_overwrite_saved_game(self, mode_label):
+        if not has_saved_game():
+            return True
+        return messagebox.askyesno(
+            "Overwrite Saved Game",
+            f"Starting {mode_label} will overwrite the current saved game. Continue?",
+        )
 
     def cycle_value(self, order, current):
         idx = order.index(current)
@@ -125,7 +139,8 @@ class ModernTkInterface(Interface):
         self.anim_cards.clear()
         self.anim_queue.clear()
         self.active_buttons = []
-        self.message = "Start game, daily challenge, or open settings."
+        self.can_continue = has_saved_game()
+        self.message = "Start new game, continue saved game, daily challenge, or open settings."
 
     def open_settings(self):
         self.stage = SETTINGS
@@ -165,6 +180,29 @@ class ModernTkInterface(Interface):
 
         mode = "Daily Challenge" if self.daily_mode else "Normal"
         self.message = f"{mode} started ({self.difficulty}). Drag cards to move."
+        save_game(self.core)
+
+    def continue_game(self):
+        core = load_game()
+        if core is None:
+            self.can_continue = False
+            self.message = "No valid saved game found."
+            return
+        core.registerInterface(self)
+        core.registerPlayer(DUMMY_PLAYER)
+        core.resumeGame()
+        self.vm = CoreAdapter.snapshot(core)
+        self.stage = GAME
+        self.drag = None
+        self.hover_drop_stack = None
+        self.hover_drop_valid = False
+        self.pending_move_anim = None
+        self.anim_queue.clear()
+        self.anim_cards.clear()
+        self.particles.clear()
+        self.daily_mode = False
+        self.current_seed = None
+        self.message = "Continued saved game."
 
     def onStart(self):
         self.vm = CoreAdapter.snapshot(self.core)
@@ -179,6 +217,7 @@ class ModernTkInterface(Interface):
     def onEvent(self, event):
         self.vm = CoreAdapter.snapshot(self.core)
         self.anim_queue.append(CoreAdapter.event_to_animation(event))
+        save_game(self.core)
         super().onEvent(event)
 
     def onUndoEvent(self, event):
@@ -187,6 +226,7 @@ class ModernTkInterface(Interface):
         self.anim_queue.clear()
         self.drag = None
         self.message = "Undo applied."
+        save_game(self.core)
         super().onUndoEvent(event)
 
     def notifyRedraw(self):
@@ -207,8 +247,14 @@ class ModernTkInterface(Interface):
 
         if self.stage == MENU:
             if key in ("n", "return"):
+                if not self.confirm_overwrite_saved_game("a new game"):
+                    return
                 self.start_new_game(daily=False)
+            elif key == "c":
+                self.continue_game()
             elif key == "d":
+                if not self.confirm_overwrite_saved_game("a daily challenge"):
+                    return
                 self.start_new_game(daily=True)
             elif key == "s":
                 self.open_settings()
@@ -239,6 +285,8 @@ class ModernTkInterface(Interface):
 
         if self.stage == GAME:
             if key == "n":
+                if not self.confirm_overwrite_saved_game("a new game"):
+                    return
                 self.start_new_game(daily=False)
             elif key == "d":
                 if not self.core.askDeal():
@@ -358,10 +406,18 @@ class ModernTkInterface(Interface):
         for button in self.active_buttons:
             x1, y1, x2, y2 = button["rect"]
             if x1 <= x <= x2 and y1 <= y <= y2:
+                if not button.get("enabled", True):
+                    return
                 action = button["action"]
                 if action == "new":
+                    if not self.confirm_overwrite_saved_game("a new game"):
+                        return
                     self.start_new_game(daily=False)
+                elif action == "continue":
+                    self.continue_game()
                 elif action == "daily":
+                    if not self.confirm_overwrite_saved_game("a daily challenge"):
+                        return
                     self.start_new_game(daily=True)
                 elif action == "settings":
                     self.open_settings()
@@ -556,6 +612,7 @@ class ModernTkInterface(Interface):
         gap = 18
         button_defs = [
             ("Start New Game", "new", "#0f766e"),
+            ("Continue Game", "continue", "#0d9488"),
             ("Daily Challenge", "daily", "#1d4ed8"),
             ("Game Settings", "settings", "#7c3aed"),
         ]
@@ -565,14 +622,17 @@ class ModernTkInterface(Interface):
             y1 = start_y + i * (bh + gap)
             x2 = x1 + bw
             y2 = y1 + bh
-            self.active_buttons.append({"action": action, "rect": (x1, y1, x2, y2)})
-            c.create_rectangle(x1, y1, x2, y2, fill=fill, outline="#f8fafc", width=2)
-            c.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=label, fill="#f8fafc", font=f"Helvetica {self.fs(16)} bold")
+            enabled = not (action == "continue" and not self.can_continue)
+            self.active_buttons.append({"action": action, "rect": (x1, y1, x2, y2), "enabled": enabled})
+            button_fill = fill if enabled else "#475569"
+            text_fill = "#f8fafc" if enabled else "#cbd5e1"
+            c.create_rectangle(x1, y1, x2, y2, fill=button_fill, outline="#f8fafc", width=2)
+            c.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=label, fill=text_fill, font=f"Helvetica {self.fs(16)} bold")
 
         c.create_text(
             self.width * 0.5,
             self.height - 34,
-            text="Keys: N new game, D daily challenge, S settings",
+            text="Keys: N new game, C continue, D daily challenge, S settings",
             fill=theme["hud_subtext"],
             font=f"Helvetica {self.fs(13)}",
         )
