@@ -15,14 +15,17 @@ implementation of two kinds of interfaces.
 
 ## Modern UI controls
 - Menu:
-  - click `Start New Game`, `Continue Game`, `Daily Challenge`, or `Game Settings`.
+  - click `Start New Game`, `Continue Game`, `Daily Challenge`, `Statistics`, or `Game Settings`.
+  - `Save Slot` supports 3 slots; `Continue Game` uses current slot.
 - Settings page:
   - `Difficulty`: `Easy(1-suit) / Medium(2-suit) / Hard(4-suit)`
   - `Card Face`: `Classic / Minimal / Neo`
+  - `Back Pattern`: `ClassicDrawn / BlueWeave / EmeraldGlyph / SunsetArc`
   - `Theme`: `Forest / Ocean / Sunset`
   - `Font Scale`: `Small / Normal / Large / X-Large / Huge`
   - Settings are persisted to `modern_ui/settings.ini`.
-  - Game progress is auto-saved to `modern_ui/savegame.txt`.
+  - Game progress is auto-saved per slot to `modern_ui/savegame_slot1.txt` ... `savegame_slot3.txt`.
+  - Statistics are persisted to `modern_ui/stats.json`.
 - In game:
   - Mouse drag-and-drop: press on a valid sequence, drag, release on destination stack.
   - Click the deck (top-right card pile) to deal.
@@ -33,7 +36,9 @@ implementation of two kinds of interfaces.
   - `R`: redo
   - `S`: open settings page
   - `M`: back to menu
-  - In settings page: `F` cycles font scale.
+  - `H`: Hint+ (top candidate moves with risk notes)
+  - `P`: open statistics page
+  - In settings page: `F` cycles font scale, `B` cycles card back pattern.
 
 ## Future plan
 The latest version of spider card game on Windows10 can generate games of different difficulty. 

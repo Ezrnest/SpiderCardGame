@@ -2,17 +2,21 @@ import math
 import random
 import time
 from datetime import date
-from tkinter import BOTH, Canvas, Tk, messagebox
+from pathlib import Path
+from tkinter import BOTH, Canvas, PhotoImage, Tk, messagebox
 
 from base.Core import Card, Core, DUMMY_PLAYER, GameConfig, encodeStack
 from base.Interface import Interface
 from modern_ui.adapter import CoreAdapter
 from modern_ui.card_face import CardFaceRenderer
 from modern_ui.entities import DragState, MovingCard, Particle
-from modern_ui.game_store import has_saved_game, load_game, save_game
+from modern_ui.game_store import SLOT_COUNT, has_saved_game, list_slot_status, load_game, save_game
 from modern_ui.settings_store import load_settings, save_settings
+from modern_ui.stats_store import load_stats, record_game_lost, record_game_started, record_game_won, save_stats
 from modern_ui.ui_config import (
     ANIM_DURATION,
+    BACK_PATTERN_FILES,
+    BACK_PATTERN_ORDER,
     CARD_HEIGHT_RATIO,
     CARD_STYLE_ORDER,
     CARD_WIDTH_RATIO,
@@ -24,6 +28,7 @@ from modern_ui.ui_config import (
     GAME,
     MENU,
     SETTINGS,
+    STATS,
     STACK_GAP_RATIO,
     THEMES,
     THEME_ORDER,
@@ -46,11 +51,13 @@ class ModernTkInterface(Interface):
 
         self.difficulty = "Medium"
         self.card_style = "Classic"
+        self.back_pattern = "ClassicDrawn"
         self.theme_name = "Forest"
         self.font_scale = "Normal"
         self.daily_mode = False
         self.test_mode = False
         self.current_seed = None
+        self.save_slot = 1
 
         self.anim_queue = []
         self.anim_cards = []
@@ -68,7 +75,13 @@ class ModernTkInterface(Interface):
 
         self.active_buttons = []
         self.can_continue = False
+        self.slot_status = []
+        self.stats = load_stats()
+        self.current_game_started_at = None
+        self.current_game_actions = 0
+        self.current_game_recorded = False
         self.card_renderer = CardFaceRenderer()
+        self.back_images = {}
         self.load_persisted_settings()
 
     def run(self):
@@ -80,10 +93,13 @@ class ModernTkInterface(Interface):
 
         self.root.bind("<Configure>", self.on_resize)
         self.root.bind("<Button-1>", self.on_press)
+        self.root.bind("<Button-2>", self.on_right_click)
+        self.root.bind("<Button-3>", self.on_right_click)
         self.root.bind("<B1-Motion>", self.on_drag)
         self.root.bind("<ButtonRelease-1>", self.on_release)
         self.root.bind("<Key>", self.on_key)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.load_back_images()
 
         self.open_menu()
         self.tick()
@@ -97,18 +113,34 @@ class ModernTkInterface(Interface):
         settings = load_settings()
         self.difficulty = settings["difficulty"]
         self.card_style = settings["card_style"]
+        self.back_pattern = settings["back_pattern"]
         self.theme_name = settings["theme_name"]
         self.font_scale = settings["font_scale"]
+        self.save_slot = int(settings["save_slot"])
 
     def persist_settings(self):
         save_settings(
             {
                 "difficulty": self.difficulty,
                 "card_style": self.card_style,
+                "back_pattern": self.back_pattern,
                 "theme_name": self.theme_name,
                 "font_scale": self.font_scale,
+                "save_slot": str(self.save_slot),
             }
         )
+
+    def load_back_images(self):
+        self.back_images = {}
+        base = Path(__file__).with_name("assets").joinpath("card_backs")
+        for name, filename in BACK_PATTERN_FILES.items():
+            path = base / filename
+            if not path.exists():
+                continue
+            try:
+                self.back_images[name] = PhotoImage(file=str(path))
+            except Exception:
+                pass
 
     def fs(self, base):
         factor = FONT_SCALE_FACTOR[self.font_scale]
@@ -123,11 +155,11 @@ class ModernTkInterface(Interface):
         self.root.destroy()
 
     def confirm_overwrite_saved_game(self, mode_label):
-        if not has_saved_game():
+        if not has_saved_game(self.save_slot):
             return True
         return messagebox.askyesno(
             "Overwrite Saved Game",
-            f"Starting {mode_label} will overwrite the current saved game. Continue?",
+            f"Starting {mode_label} will overwrite saved slot {self.save_slot}. Continue?",
         )
 
     def cycle_value(self, order, current):
@@ -140,13 +172,58 @@ class ModernTkInterface(Interface):
         self.anim_cards.clear()
         self.anim_queue.clear()
         self.active_buttons = []
-        self.can_continue = has_saved_game()
+        self.slot_status = list_slot_status()
+        self.can_continue = has_saved_game(self.save_slot)
         self.message = "Start new game, continue saved game, daily challenge, or open settings."
+
+    def open_stats(self):
+        self.stage = STATS
+        self.active_buttons = []
+        self.message = "Statistics overview."
 
     def open_settings(self):
         self.stage = SETTINGS
         self.active_buttons = []
         self.message = "Configure difficulty, card face style, and theme."
+
+    def cycle_save_slot(self):
+        self.save_slot += 1
+        if self.save_slot > SLOT_COUNT:
+            self.save_slot = 1
+        self.persist_settings()
+        self.slot_status = list_slot_status()
+        self.can_continue = has_saved_game(self.save_slot)
+
+    def begin_game_tracking(self):
+        if self.test_mode:
+            self.current_game_started_at = None
+            self.current_game_actions = 0
+            self.current_game_recorded = True
+            return
+        self.current_game_started_at = time.time()
+        self.current_game_actions = 0
+        self.current_game_recorded = False
+        self.stats = record_game_started(self.stats, self.difficulty)
+        save_stats(self.stats)
+
+    def mark_game_won_if_needed(self):
+        if self.test_mode or self.current_game_recorded:
+            return
+        if self.current_game_started_at is None:
+            return
+        duration = time.time() - self.current_game_started_at
+        self.stats = record_game_won(self.stats, self.difficulty, duration, self.current_game_actions)
+        save_stats(self.stats)
+        self.current_game_recorded = True
+
+    def mark_game_lost_if_needed(self):
+        if self.test_mode or self.current_game_recorded:
+            return
+        if self.current_game_started_at is None:
+            return
+        self.stats = record_game_lost(self.stats, self.difficulty)
+        save_stats(self.stats)
+        self.current_game_recorded = True
 
     def build_config(self, daily=False):
         cfg = GameConfig()
@@ -163,6 +240,8 @@ class ModernTkInterface(Interface):
         return cfg
 
     def start_new_game(self, daily=False):
+        if self.stage == GAME:
+            self.mark_game_lost_if_needed()
         core = Core()
         core.registerInterface(self)
         core.registerPlayer(DUMMY_PLAYER)
@@ -182,13 +261,14 @@ class ModernTkInterface(Interface):
 
         mode = "Daily Challenge" if self.daily_mode else "Normal"
         self.message = f"{mode} started ({self.difficulty}). Drag cards to move."
+        self.begin_game_tracking()
         self.save_current_game()
 
     def continue_game(self):
-        core = load_game()
+        core = load_game(self.save_slot)
         if core is None:
             self.can_continue = False
-            self.message = "No valid saved game found."
+            self.message = f"No valid saved game in slot {self.save_slot}."
             return
         core.registerInterface(self)
         core.registerPlayer(DUMMY_PLAYER)
@@ -205,14 +285,17 @@ class ModernTkInterface(Interface):
         self.test_mode = False
         self.daily_mode = False
         self.current_seed = None
-        self.message = "Continued saved game."
+        self.current_game_started_at = time.time()
+        self.current_game_actions = 0
+        self.current_game_recorded = False
+        self.message = f"Continued saved game from slot {self.save_slot}."
 
     def save_current_game(self):
         if self.core is None:
             return
         if self.test_mode:
             return
-        save_game(self.core)
+        save_game(self.core, self.save_slot)
 
     @staticmethod
     def visible_card(suit, num):
@@ -256,6 +339,9 @@ class ModernTkInterface(Interface):
         self.test_mode = True
         self.daily_mode = False
         self.current_seed = None
+        self.current_game_started_at = None
+        self.current_game_actions = 0
+        self.current_game_recorded = True
         self.message = "Test duel: move A♠ from stack 1 onto stack 0 to complete one pile."
 
     def onStart(self):
@@ -264,6 +350,7 @@ class ModernTkInterface(Interface):
     def onWin(self):
         self.vm = CoreAdapter.snapshot(self.core)
         self.message = "You win! Press N for new game or M for menu."
+        self.mark_game_won_if_needed()
         self.spawn_firework_burst(self.width * 0.5, self.height * 0.3, 34)
         self.spawn_firework_burst(self.width * 0.35, self.height * 0.26, 28)
         self.spawn_firework_burst(self.width * 0.65, self.height * 0.26, 28)
@@ -314,6 +401,10 @@ class ModernTkInterface(Interface):
                 self.start_new_game(daily=True)
             elif key == "s":
                 self.open_settings()
+            elif key == "p":
+                self.open_stats()
+            elif key == "l":
+                self.cycle_save_slot()
             return
 
         if self.stage == SETTINGS:
@@ -331,12 +422,22 @@ class ModernTkInterface(Interface):
             elif key == "c":
                 self.card_style = self.cycle_value(CARD_STYLE_ORDER, self.card_style)
                 self.persist_settings()
+            elif key == "b":
+                self.back_pattern = self.cycle_value(BACK_PATTERN_ORDER, self.back_pattern)
+                self.persist_settings()
             elif key == "t":
                 self.theme_name = self.cycle_value(THEME_ORDER, self.theme_name)
                 self.persist_settings()
             elif key == "f":
                 self.font_scale = self.cycle_value(FONT_SCALE_ORDER, self.font_scale)
                 self.persist_settings()
+            elif key == "l":
+                self.cycle_save_slot()
+            return
+
+        if self.stage == STATS:
+            if key in ("escape", "p"):
+                self.open_menu()
             return
 
         if self.stage == GAME:
@@ -347,6 +448,8 @@ class ModernTkInterface(Interface):
             elif key == "d":
                 if not self.core.askDeal():
                     self.message = "No cards left in base."
+                else:
+                    self.current_game_actions += 1
             elif key == "u":
                 if not self.core.askUndo():
                     self.message = "Cannot undo."
@@ -355,9 +458,13 @@ class ModernTkInterface(Interface):
                     self.message = "Cannot redo."
             elif key == "s":
                 self.open_settings()
+            elif key == "h":
+                self.message = self.build_hint_message()
+            elif key == "p":
+                self.open_stats()
 
     def on_press(self, event):
-        if self.stage in (MENU, SETTINGS):
+        if self.stage in (MENU, SETTINGS, STATS):
             self.on_page_click(event.x, event.y)
             return
 
@@ -369,6 +476,7 @@ class ModernTkInterface(Interface):
                 self.message = "No cards left in base."
             else:
                 self.message = "Dealt from deck."
+                self.current_game_actions += 1
             return
 
         hit = self.find_stack_and_index(event.x, event.y)
@@ -394,6 +502,16 @@ class ModernTkInterface(Interface):
         self.hover_drop_valid = False
         self.message = f"Dragging {len(stack_cards)} card(s)..."
         self.spawn_spark_shower(src_x, src_y, 8)
+
+    def on_right_click(self, event):
+        if self.stage != GAME:
+            return
+        if self.drag is not None:
+            self.drag = None
+            self.hover_drop_stack = None
+            self.hover_drop_valid = False
+        if not self.core.askUndo():
+            self.message = "Cannot undo."
 
     def on_drag(self, event):
         if self.stage != GAME or self.drag is None:
@@ -455,6 +573,7 @@ class ModernTkInterface(Interface):
             sx, sy = self.stack_origin(drop_stack)
             self.spawn_spark_shower(sx + self.card_size()[0] * 0.5, sy + 20, 10)
         else:
+            self.current_game_actions += 1
             sx, sy = self.stack_origin(drop_stack)
             self.spawn_spark_shower(sx + self.card_size()[0] * 0.5, sy + 20, 8)
 
@@ -477,11 +596,18 @@ class ModernTkInterface(Interface):
                     self.start_new_game(daily=True)
                 elif action == "settings":
                     self.open_settings()
+                elif action == "stats":
+                    self.open_stats()
+                elif action == "save_slot":
+                    self.cycle_save_slot()
                 elif action == "difficulty":
                     self.difficulty = self.cycle_value(DIFFICULTY_ORDER, self.difficulty)
                     self.persist_settings()
                 elif action == "card_style":
                     self.card_style = self.cycle_value(CARD_STYLE_ORDER, self.card_style)
+                    self.persist_settings()
+                elif action == "back_pattern":
+                    self.back_pattern = self.cycle_value(BACK_PATTERN_ORDER, self.back_pattern)
                     self.persist_settings()
                 elif action == "theme":
                     self.theme_name = self.cycle_value(THEME_ORDER, self.theme_name)
@@ -507,6 +633,81 @@ class ModernTkInterface(Interface):
 
         self.draw()
         self.root.after(FPS_MS, self.tick)
+
+    def format_stats_line(self, title, bucket):
+        started = int(bucket["games_started"])
+        won = int(bucket["games_won"])
+        win_rate = (won / started * 100.0) if started > 0 else 0.0
+        avg_actions = (bucket["total_actions"] / won) if won > 0 else 0.0
+        avg_duration = (bucket["total_duration_sec"] / won) if won > 0 else 0.0
+        return (
+            f"{title}: played {started}, won {won}, win {win_rate:.1f}% | "
+            f"avg moves {avg_actions:.1f}, avg time {avg_duration:.1f}s | "
+            f"streak {int(bucket['current_streak'])} (best {int(bucket['best_streak'])})"
+        )
+
+    def build_hint_candidates(self, limit=3):
+        if self.core is None or self.vm is None:
+            return []
+        candidates = []
+        stacks = self.core.stacks
+        for s_idx, stack in enumerate(stacks):
+            for idx in range(len(stack)):
+                src = (s_idx, idx)
+                if not self.core.isValidSequence(src):
+                    continue
+                moved_len = len(stack) - idx
+                src_card = stack[idx]
+                reveal_bonus = 40 if idx > 0 and stack[idx - 1].hidden else 0
+                for d_idx in range(len(stacks)):
+                    if d_idx == s_idx:
+                        continue
+                    if not self.core.canMove(src, d_idx):
+                        continue
+                    dest_stack = stacks[d_idx]
+                    score = 30 + moved_len * 2 + reveal_bonus
+                    tags = []
+                    if reveal_bonus > 0:
+                        tags.append("reveals hidden")
+                    if len(dest_stack) == 0:
+                        score -= 8
+                        tags.append("uses empty column")
+                    else:
+                        top = dest_stack[-1]
+                        if top.suit == src_card.suit:
+                            score += 5
+                            tags.append("same-suit link")
+                    risk = "low"
+                    if "uses empty column" in tags and moved_len <= 2:
+                        risk = "medium"
+                    if "uses empty column" in tags and moved_len == 1 and reveal_bonus == 0:
+                        risk = "high"
+                    candidates.append(
+                        {
+                            "src": src,
+                            "dest": d_idx,
+                            "moved_len": moved_len,
+                            "tags": tags,
+                            "risk": risk,
+                            "score": score,
+                        }
+                    )
+        candidates.sort(key=lambda x: x["score"], reverse=True)
+        return candidates[:limit]
+
+    def build_hint_message(self):
+        items = self.build_hint_candidates(limit=3)
+        if not items:
+            return "Hint+: no legal moves available."
+        parts = []
+        for i, it in enumerate(items, start=1):
+            src_stack, src_idx = it["src"]
+            tag_text = ", ".join(it["tags"]) if it["tags"] else "neutral"
+            parts.append(
+                f"{i}) S{src_stack}:{src_idx} -> S{it['dest']} | "
+                f"{it['moved_len']} card(s), risk {it['risk']}, {tag_text}"
+            )
+        return "Hint+: " + " ; ".join(parts)
 
     def consume_animation_queue(self):
         now = time.time()
@@ -625,6 +826,9 @@ class ModernTkInterface(Interface):
         if self.stage == SETTINGS:
             self.draw_settings(c)
             return
+        if self.stage == STATS:
+            self.draw_stats(c)
+            return
         if self.vm is None:
             return
 
@@ -670,6 +874,8 @@ class ModernTkInterface(Interface):
             ("Start New Game", "new", "#0f766e"),
             ("Continue Game", "continue", "#0d9488"),
             ("Daily Challenge", "daily", "#1d4ed8"),
+            (f"Save Slot: {self.save_slot}", "save_slot", "#334155"),
+            ("Statistics", "stats", "#0ea5e9"),
             ("Game Settings", "settings", "#7c3aed"),
         ]
 
@@ -685,10 +891,23 @@ class ModernTkInterface(Interface):
             c.create_rectangle(x1, y1, x2, y2, fill=button_fill, outline="#f8fafc", width=2)
             c.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=label, fill=text_fill, font=f"Helvetica {self.fs(16)} bold")
 
+        slot_lines = []
+        for row in self.slot_status:
+            state = "Saved" if row["exists"] else "Empty"
+            marker = " <" if row["slot"] == self.save_slot else ""
+            slot_lines.append(f"Slot {row['slot']}: {state}{marker}")
+        c.create_text(
+            self.width * 0.5,
+            start_y - self.fs(30),
+            text=" | ".join(slot_lines),
+            fill=theme["hud_subtext"],
+            font=f"Helvetica {self.fs(12)}",
+        )
+
         c.create_text(
             self.width * 0.5,
             self.height - 34,
-            text="Keys: N new game, C continue, D daily challenge, S settings",
+            text="Keys: N new game, C continue, D daily, L slot, P stats, S settings",
             fill=theme["hud_subtext"],
             font=f"Helvetica {self.fs(13)}",
         )
@@ -713,8 +932,10 @@ class ModernTkInterface(Interface):
         settings_defs = [
             (f"Difficulty: {self.difficulty}", "difficulty", "#0f766e"),
             (f"Card Face: {self.card_style}", "card_style", "#4338ca"),
+            (f"Back Pattern: {self.back_pattern}", "back_pattern", "#1d4ed8"),
             (f"Theme: {self.theme_name}", "theme", "#9a3412"),
             (f"Font Scale: {self.font_scale}", "font_scale", "#0f766e"),
+            (f"Save Slot: {self.save_slot}", "save_slot", "#334155"),
             ("Back To Menu", "back_menu", "#374151"),
         ]
 
@@ -731,11 +952,51 @@ class ModernTkInterface(Interface):
         cx = self.width * 0.5 - self.card_size()[0] * 1.1
         self.draw_card(c, cx, preview_y, False, 0, 0, False)
         self.draw_card(c, cx + self.card_size()[0] * 1.2, preview_y, False, 1, 11, False)
+        self.draw_card(c, cx + self.card_size()[0] * 2.4, preview_y, True, 2, 6, False)
 
         c.create_text(
             self.width * 0.5,
             self.height - 26,
-            text="Keys: 1/2/4 difficulty, C card face, T theme, F font scale, Esc/M menu",
+            text="Keys: 1/2/4 diff, C face, B back, T theme, F font, L slot, Esc/M menu",
+            fill=theme["hud_subtext"],
+            font=f"Helvetica {self.fs(12)}",
+        )
+
+    def draw_stats(self, c):
+        theme = self.theme
+        self.active_buttons = []
+        c.create_text(self.width * 0.5, self.height * 0.14, text="Statistics", fill=theme["hud_text"], font=f"Helvetica {self.fs(42)} bold")
+        c.create_text(
+            self.width * 0.5,
+            self.height * 0.14 + 42,
+            text="Overall and per-difficulty performance",
+            fill=theme["hud_subtext"],
+            font=f"Helvetica {self.fs(15)}",
+        )
+
+        lines = [self.format_stats_line("Overall", self.stats["overall"])]
+        for d in DIFFICULTY_ORDER:
+            lines.append(self.format_stats_line(d, self.stats["by_difficulty"][d]))
+
+        y = self.height * 0.30
+        for line in lines:
+            c.create_text(40, y, anchor="nw", text=line, fill=theme["hud_text"], font=f"Helvetica {self.fs(12)}")
+            y += self.fs(26)
+
+        bw = min(360, int(self.width * 0.35))
+        bh = 58
+        x1 = (self.width - bw) / 2
+        y1 = self.height * 0.78
+        x2 = x1 + bw
+        y2 = y1 + bh
+        self.active_buttons.append({"action": "back_menu", "rect": (x1, y1, x2, y2)})
+        c.create_rectangle(x1, y1, x2, y2, fill="#374151", outline="#f8fafc", width=2)
+        c.create_text((x1 + x2) / 2, (y1 + y2) / 2, text="Back To Menu", fill="#f8fafc", font=f"Helvetica {self.fs(16)} bold")
+
+        c.create_text(
+            self.width * 0.5,
+            self.height - 24,
+            text="Key: P or Esc to return menu",
             fill=theme["hud_subtext"],
             font=f"Helvetica {self.fs(12)}",
         )
@@ -763,7 +1024,10 @@ class ModernTkInterface(Interface):
             16,
             42,
             anchor="nw",
-            text=f"Mode: {mode} | Difficulty: {self.difficulty} | Face: {self.card_style} | Theme: {self.theme_name} | Font: {self.font_scale}{seed_info}",
+            text=(
+                f"Mode: {mode} | Difficulty: {self.difficulty} | Face: {self.card_style} | "
+                f"Back: {self.back_pattern} | Theme: {self.theme_name} | Font: {self.font_scale} | Slot: {self.save_slot}{seed_info}"
+            ),
             fill=theme["hud_subtext"],
             font=f"Helvetica {self.fs(12)}",
         )
@@ -839,6 +1103,8 @@ class ModernTkInterface(Interface):
             theme=self.theme,
             card_style=self.card_style,
             font_scale=FONT_SCALE_FACTOR[self.font_scale],
+            back_pattern=self.back_pattern,
+            back_image=self.back_images.get(self.back_pattern),
         )
 
     def find_stack_and_index(self, x, y):

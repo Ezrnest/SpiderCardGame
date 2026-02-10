@@ -1,6 +1,7 @@
 MENU = 1
 SETTINGS = 2
 GAME = 3
+STATS = 4
 
 STACK_GAP_RATIO = 0.015
 TOP_MARGIN_RATIO = 0.16
@@ -24,6 +25,12 @@ FONT_SCALE_FACTOR = {
     "Huge": 1.7,
 }
 SUIT_SYMBOLS = ("♠", "♥", "♣", "♦")
+BACK_PATTERN_ORDER = ("ClassicDrawn", "BlueWeave", "EmeraldGlyph", "SunsetArc")
+BACK_PATTERN_FILES = {
+    "BlueWeave": "blue_weave.ppm",
+    "EmeraldGlyph": "emerald_glyph.ppm",
+    "SunsetArc": "sunset_arc.ppm",
+}
 
 THEMES = {
     "Forest": {

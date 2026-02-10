@@ -5,7 +5,7 @@ class CardFaceRenderer:
     def suit_symbol(self, suit):
         return SUIT_SYMBOLS[suit]
 
-    def draw_card(self, canvas, x, y, hidden, suit, num, selected, cw, ch, theme, card_style, font_scale):
+    def draw_card(self, canvas, x, y, hidden, suit, num, selected, cw, ch, theme, card_style, font_scale, back_pattern, back_image):
         def fs(base):
             return max(8, int(base * font_scale))
 
@@ -15,7 +15,7 @@ class CardFaceRenderer:
         canvas.create_rectangle(x, y, x + cw, y + ch, fill=fill, outline=outline, width=width)
 
         if hidden:
-            self.draw_card_back_pattern(canvas, x, y, cw, ch, theme, card_style, font_scale)
+            self.draw_card_back_pattern(canvas, x, y, cw, ch, theme, card_style, font_scale, back_pattern, back_image)
             return
 
         rank = NUMS[num]
@@ -39,9 +39,14 @@ class CardFaceRenderer:
             canvas.create_line(x + 8, y + ch * 0.55, x + cw - 8, y + ch * 0.55, fill=theme["deck_outline"], width=2)
             canvas.create_text(x + cw * 0.5, y + ch * 0.77, text=suit_text * 2, fill=suit_color, font=f"Helvetica {fs(18)}")
 
-    def draw_card_back_pattern(self, canvas, x, y, cw, ch, theme, card_style, font_scale):
+    def draw_card_back_pattern(self, canvas, x, y, cw, ch, theme, card_style, font_scale, back_pattern, back_image):
         def fs(base):
             return max(8, int(base * font_scale))
+
+        # Prefer custom image-based card backs when selected and image is available.
+        if back_pattern != "ClassicDrawn" and back_image is not None:
+            canvas.create_image(x, y, anchor="nw", image=back_image)
+            return
 
         if card_style == "Classic":
             for i in range(4):
