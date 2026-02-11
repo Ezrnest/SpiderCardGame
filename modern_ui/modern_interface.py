@@ -59,6 +59,35 @@ else:
 class ModernTkInterface(Interface):
     TEXTURED_DRAG_FULL_LIMIT = 5
     TEXTURED_DRAG_SHADOW_LIMIT = 1
+    BUCKET_TEXT_ZH = {"Easy": "简单", "Medium": "中等", "Hard": "困难"}
+    SEED_SOURCE_TEXT_ZH = {
+        "random": "随机",
+        "bucket": "题库",
+        "daily": "每日",
+        "manual": "手动",
+        "replay": "重开",
+        "loaded": "读档",
+        "test": "测试",
+    }
+    STYLE_TEXT_ZH = {
+        "Classic": "经典",
+        "FourColorClassic": "四色经典",
+        "Minimal": "极简",
+        "Neo": "新锐",
+        "ArtDeck": "艺术贴图",
+        "NeoGrid": "霓虹网格",
+        "VintageGold": "复古金",
+        "SakuraInk": "樱墨",
+    }
+    THEME_TEXT_ZH = {"Forest": "森林", "Ocean": "海洋", "Sunset": "落日"}
+    FONT_SCALE_TEXT_ZH = {
+        "Small": "小",
+        "Normal": "普通",
+        "Large": "大",
+        "X-Large": "超大",
+        "Huge": "特大",
+    }
+    SHOW_TOP_LEFT_DETAIL = False
 
     def __init__(self, width=1200, height=760):
         super().__init__()
@@ -124,7 +153,7 @@ class ModernTkInterface(Interface):
 
     def run(self):
         self.root = Tk()
-        self.root.title("Spider Card Modern")
+        self.root.title("蜘蛛纸牌")
         self.root.resizable(True, True)
         self.canvas = Canvas(self.root, width=self.width, height=self.height, highlightthickness=0, bd=0)
         self.canvas.pack(expand=1, fill=BOTH)
@@ -231,7 +260,7 @@ class ModernTkInterface(Interface):
         return max(8, int(base * factor))
 
     def on_close(self):
-        if not messagebox.askyesno("Exit", "Exit the game now?"):
+        if not messagebox.askyesno("退出", "确定要退出游戏吗？"):
             return
         if self.stage == GAME and self.core is not None and self.vm is not None:
             self.save_current_game()
@@ -242,8 +271,8 @@ class ModernTkInterface(Interface):
         if not has_saved_game(self.save_slot):
             return True
         return messagebox.askyesno(
-            "Overwrite Saved Game",
-            f"Starting {mode_label} will overwrite saved slot {self.save_slot}. Continue?",
+            "覆盖存档",
+            f"开始{mode_label}会覆盖存档槽 {self.save_slot}。是否继续？",
         )
 
     def cycle_value(self, order, current):
@@ -254,7 +283,16 @@ class ModernTkInterface(Interface):
         return profile_key(self.suit_count, self.difficulty_bucket)
 
     def current_profile_label(self):
-        return f"{self.suit_count}-Suit / {self.difficulty_bucket}"
+        return f"{self.suit_count}花色 / {self.BUCKET_TEXT_ZH.get(self.difficulty_bucket, self.difficulty_bucket)}"
+
+    def display_style_name(self):
+        return self.STYLE_TEXT_ZH.get(self.card_style, self.card_style)
+
+    def display_theme_name(self):
+        return self.THEME_TEXT_ZH.get(self.theme_name, self.theme_name)
+
+    def display_font_scale(self):
+        return self.FONT_SCALE_TEXT_ZH.get(self.font_scale, self.font_scale)
 
     def pick_seed_from_bucket(self, suit_count: int, difficulty_bucket: str):
         seed = choose_seed_for_bucket(suit_count, difficulty_bucket)
@@ -272,19 +310,19 @@ class ModernTkInterface(Interface):
         self.active_buttons = []
         self.slot_status = list_slot_status()
         self.can_continue = has_saved_game(self.save_slot)
-        self.message = "Start new game, continue saved game, daily challenge, or open settings."
+        self.message = "开始新游戏、继续存档、每日挑战，或打开设置。"
         self.request_redraw()
 
     def open_stats(self):
         self.stage = STATS
         self.active_buttons = []
-        self.message = "Statistics overview."
+        self.message = "统计总览。"
         self.request_redraw()
 
     def open_settings(self):
         self.stage = SETTINGS
         self.active_buttons = []
-        self.message = "Configure suit count, difficulty bucket, card style, and theme."
+        self.message = "配置花色数量、难度分级、卡面风格与主题。"
         self.request_redraw()
 
     def cycle_save_slot(self):
@@ -380,14 +418,14 @@ class ModernTkInterface(Interface):
         self.collect_cards.clear()
         self.reset_victory_state()
 
-        mode = "Daily Challenge" if self.daily_mode else "Normal"
+        mode = "每日挑战" if self.daily_mode else "普通"
         profile = self.current_profile_label()
         if self.seed_source == "bucket":
-            self.message = f"{mode} started ({profile}, bucket seed {self.current_seed}). Drag cards to move. Press G to restart same seed."
+            self.message = f"{mode}已开始（{profile}，题库种子 {self.current_seed}）。拖动卡牌移动。按 G 可同种子重开。"
         elif self.seed_source == "daily":
-            self.message = f"{mode} started ({profile}, daily seed {self.current_seed}). Drag cards to move. Press G to restart same seed."
+            self.message = f"{mode}已开始（{profile}，每日种子 {self.current_seed}）。拖动卡牌移动。按 G 可同种子重开。"
         else:
-            self.message = f"{mode} started ({profile}, random seed). Drag cards to move."
+            self.message = f"{mode}已开始（{profile}，随机种子）。拖动卡牌移动。"
         self.begin_game_tracking()
         self.save_current_game()
         self.request_redraw()
@@ -421,8 +459,8 @@ class ModernTkInterface(Interface):
         self.reset_victory_state()
 
         self.message = (
-            f"Seed game started ({self.current_profile_label()}, manual seed {self.current_seed}). "
-            "Drag cards to move. Press G to restart same seed."
+            f"种子对局已开始（{self.current_profile_label()}，手动种子 {self.current_seed}）。"
+            "拖动卡牌移动。按 G 可同种子重开。"
         )
         self.begin_game_tracking()
         self.save_current_game()
@@ -431,19 +469,19 @@ class ModernTkInterface(Interface):
     def prompt_and_start_seeded_game(self):
         if self.root is None:
             return
-        raw = simpledialog.askstring("Seeded Game", "Enter an integer seed:", parent=self.root)
+        raw = simpledialog.askstring("种子开局", "请输入整数种子：", parent=self.root)
         if raw is None:
             return
         value = raw.strip()
         if not value:
-            self.message = "Seed input canceled."
+            self.message = "已取消种子输入。"
             self.request_redraw()
             return
         try:
             seed = int(value)
         except ValueError:
-            messagebox.showerror("Invalid Seed", "Seed must be an integer.")
-            self.message = "Invalid seed input."
+            messagebox.showerror("种子无效", "种子必须是整数。")
+            self.message = "种子输入无效。"
             self.request_redraw()
             return
         self.start_seeded_game(seed)
@@ -452,7 +490,7 @@ class ModernTkInterface(Interface):
         if self.stage != GAME:
             return
         if self.current_seed is None:
-            self.message = "Current game seed is unavailable. Same-seed restart is only supported for seeded runs."
+            self.message = "当前对局没有可用种子，仅支持对有种子的对局进行同种子重开。"
             self.request_redraw()
             return
 
@@ -483,8 +521,7 @@ class ModernTkInterface(Interface):
         self.reset_victory_state()
 
         self.message = (
-            f"Same-seed restart ({self.current_profile_label()}, seed {self.current_seed}). "
-            "Drag cards to move."
+            f"同种子重开（{self.current_profile_label()}，种子 {self.current_seed}）。拖动卡牌移动。"
         )
         self.begin_game_tracking()
         self.save_current_game()
@@ -494,7 +531,7 @@ class ModernTkInterface(Interface):
         core = load_game(self.save_slot)
         if core is None:
             self.can_continue = False
-            self.message = f"No valid saved game in slot {self.save_slot}."
+            self.message = f"存档槽 {self.save_slot} 没有可用存档。"
             self.request_redraw()
             return
         core.registerInterface(self)
@@ -518,7 +555,7 @@ class ModernTkInterface(Interface):
         self.current_game_started_at = time.time()
         self.current_game_actions = 0
         self.current_game_recorded = False
-        self.message = f"Continued saved game from slot {self.save_slot}."
+        self.message = f"已从存档槽 {self.save_slot} 继续游戏。"
         self.request_redraw()
 
     def save_current_game(self):
@@ -576,7 +613,7 @@ class ModernTkInterface(Interface):
         self.current_game_started_at = None
         self.current_game_actions = 0
         self.current_game_recorded = True
-        self.message = "Test duel: move A♠ from stack 1 onto stack 0 to win in one move."
+        self.message = "测试对局：将 A♠ 从第 1 列移动到第 0 列即可获胜。"
         self.request_redraw()
 
     def onStart(self):
@@ -594,13 +631,13 @@ class ModernTkInterface(Interface):
             "suit_count": self.suit_count,
             "difficulty_bucket": self.difficulty_bucket,
             "profile": self.current_profile_label(),
-            "mode": "Daily" if self.daily_mode else ("Test" if self.test_mode else "Normal"),
+            "mode": "每日" if self.daily_mode else ("测试" if self.test_mode else "普通"),
         }
         self.fx_rng.seed(time.time_ns())
         self.victory_started_at = time.time()
         self.victory_anim_active = True
         self.victory_panel_visible = False
-        self.message = "Victory animation..."
+        self.message = "胜利动画中..."
         self.mark_game_won_if_needed()
         self.spawn_firework_burst(self.width * 0.5, self.height * 0.3, 34)
         self.spawn_firework_burst(self.width * 0.35, self.height * 0.26, 28)
@@ -619,7 +656,7 @@ class ModernTkInterface(Interface):
         self.anim_cards.clear()
         self.anim_queue.clear()
         self.drag = None
-        self.message = "Undo applied."
+        self.message = "已撤销。"
         self.save_current_game()
         self.request_redraw()
         super().onUndoEvent(event)
@@ -646,11 +683,11 @@ class ModernTkInterface(Interface):
 
         if self.stage == MENU:
             if key in ("n", "return"):
-                if not self.confirm_overwrite_saved_game("a new game"):
+                if not self.confirm_overwrite_saved_game("新游戏"):
                     return
                 self.start_new_game(daily=False)
             elif key == "i":
-                if not self.confirm_overwrite_saved_game("a seeded game"):
+                if not self.confirm_overwrite_saved_game("种子对局"):
                     return
                 self.prompt_and_start_seeded_game()
             elif key == "t":
@@ -658,7 +695,7 @@ class ModernTkInterface(Interface):
             elif key == "c":
                 self.continue_game()
             elif key == "d":
-                if not self.confirm_overwrite_saved_game("a daily challenge"):
+                if not self.confirm_overwrite_saved_game("每日挑战"):
                     return
                 self.start_new_game(daily=True)
             elif key == "s":
@@ -721,22 +758,22 @@ class ModernTkInterface(Interface):
 
         if self.stage == GAME:
             if key == "n":
-                if not self.confirm_overwrite_saved_game("a new game"):
+                if not self.confirm_overwrite_saved_game("新游戏"):
                     return
                 self.start_new_game(daily=False)
             elif key == "g":
                 self.restart_same_seed_game()
             elif key == "d":
                 if not self.core.askDeal():
-                    self.message = "No cards left in base."
+                    self.message = "底牌已发完。"
                 else:
                     self.current_game_actions += 1
             elif key == "u":
                 if not self.core.askUndo():
-                    self.message = "Cannot undo."
+                    self.message = "无法撤销。"
             elif key == "r":
                 if not self.core.askRedo():
-                    self.message = "Cannot redo."
+                    self.message = "无法重做。"
             elif key == "s":
                 self.open_settings()
             elif key == "h":
@@ -757,9 +794,9 @@ class ModernTkInterface(Interface):
 
         if self.is_point_in_deck(event.x, event.y):
             if not self.core.askDeal():
-                self.message = "No cards left in base."
+                self.message = "底牌已发完。"
             else:
-                self.message = "Dealt from deck."
+                self.message = "已发一轮牌。"
                 self.current_game_actions += 1
             self.request_redraw()
             return
@@ -769,7 +806,7 @@ class ModernTkInterface(Interface):
             return
         stack_idx, card_idx = hit
         if not self.core.isValidSequence((stack_idx, card_idx)):
-            self.message = "This sequence cannot be moved."
+            self.message = "该序列不可移动。"
             self.request_redraw()
             return
 
@@ -786,7 +823,7 @@ class ModernTkInterface(Interface):
         )
         self.hover_drop_stack = None
         self.hover_drop_valid = False
-        self.message = f"Dragging {len(stack_cards)} card(s)..."
+        self.message = f"正在拖动 {len(stack_cards)} 张牌..."
         self.spawn_spark_shower(src_x, src_y, 8)
         self.request_redraw()
 
@@ -799,7 +836,7 @@ class ModernTkInterface(Interface):
             self.hover_drop_valid = False
             self.request_redraw()
         if not self.core.askUndo():
-            self.message = "Cannot undo."
+            self.message = "无法撤销。"
             self.request_redraw()
 
     def on_drag(self, event):
@@ -846,7 +883,7 @@ class ModernTkInterface(Interface):
         self.hover_drop_valid = False
 
         if drop_stack is None:
-            self.message = "Move canceled."
+            self.message = "已取消移动。"
             self.request_redraw()
             return
 
@@ -860,7 +897,7 @@ class ModernTkInterface(Interface):
 
         if not self.core.askMove(src, drop_stack):
             self.pending_move_anim = None
-            self.message = "Move rejected by rules."
+            self.message = "该移动不符合规则。"
             sx, sy = self.stack_origin(drop_stack)
             self.spawn_spark_shower(sx + self.card_size()[0] * 0.5, sy + 20, 10)
         else:
@@ -877,17 +914,17 @@ class ModernTkInterface(Interface):
                     return
                 action = button["action"]
                 if action == "new":
-                    if not self.confirm_overwrite_saved_game("a new game"):
+                    if not self.confirm_overwrite_saved_game("新游戏"):
                         return
                     self.start_new_game(daily=False)
                 elif action == "seed":
-                    if not self.confirm_overwrite_saved_game("a seeded game"):
+                    if not self.confirm_overwrite_saved_game("种子对局"):
                         return
                     self.prompt_and_start_seeded_game()
                 elif action == "continue":
                     self.continue_game()
                 elif action == "daily":
-                    if not self.confirm_overwrite_saved_game("a daily challenge"):
+                    if not self.confirm_overwrite_saved_game("每日挑战"):
                         return
                     self.start_new_game(daily=True)
                 elif action == "settings":
@@ -931,7 +968,7 @@ class ModernTkInterface(Interface):
             if now - self.victory_started_at >= self.victory_anim_duration:
                 self.victory_anim_active = False
                 self.victory_panel_visible = True
-                self.message = "Victory summary ready. Press N for new game or M for menu."
+                self.message = "胜利结算已就绪。按 N 开新局，或按 M 返回菜单。"
                 self.request_redraw()
 
         has_active_fx = bool(
@@ -953,9 +990,9 @@ class ModernTkInterface(Interface):
         avg_actions = (bucket["total_actions"] / won) if won > 0 else 0.0
         avg_duration = (bucket["total_duration_sec"] / won) if won > 0 else 0.0
         return (
-            f"{title}: played {started}, won {won}, win {win_rate:.1f}% | "
-            f"avg moves {avg_actions:.1f}, avg time {avg_duration:.1f}s | "
-            f"streak {int(bucket['current_streak'])} (best {int(bucket['best_streak'])})"
+            f"{title}：已玩 {started}，获胜 {won}，胜率 {win_rate:.1f}% | "
+            f"平均步数 {avg_actions:.1f}，平均用时 {avg_duration:.1f} 秒 | "
+            f"连胜 {int(bucket['current_streak'])}（最高 {int(bucket['best_streak'])}）"
         )
 
     def build_hint_candidates(self, limit=3):
@@ -980,20 +1017,20 @@ class ModernTkInterface(Interface):
                     score = 30 + moved_len * 2 + reveal_bonus
                     tags = []
                     if reveal_bonus > 0:
-                        tags.append("reveals hidden")
+                        tags.append("翻开暗牌")
                     if len(dest_stack) == 0:
                         score -= 8
-                        tags.append("uses empty column")
+                        tags.append("占用空列")
                     else:
                         top = dest_stack[-1]
                         if top.suit == src_card.suit:
                             score += 5
-                            tags.append("same-suit link")
-                    risk = "low"
-                    if "uses empty column" in tags and moved_len <= 2:
-                        risk = "medium"
-                    if "uses empty column" in tags and moved_len == 1 and reveal_bonus == 0:
-                        risk = "high"
+                            tags.append("同花衔接")
+                    risk = "低"
+                    if "占用空列" in tags and moved_len <= 2:
+                        risk = "中"
+                    if "占用空列" in tags and moved_len == 1 and reveal_bonus == 0:
+                        risk = "高"
                     candidates.append(
                         {
                             "src": src,
@@ -1010,16 +1047,16 @@ class ModernTkInterface(Interface):
     def build_hint_message(self):
         items = self.build_hint_candidates(limit=3)
         if not items:
-            return "Hint+: no legal moves available."
+            return "提示+：当前无合法移动。"
         parts = []
         for i, it in enumerate(items, start=1):
             src_stack, src_idx = it["src"]
-            tag_text = ", ".join(it["tags"]) if it["tags"] else "neutral"
+            tag_text = "，".join(it["tags"]) if it["tags"] else "中性"
             parts.append(
-                f"{i}) S{src_stack}:{src_idx} -> S{it['dest']} | "
-                f"{it['moved_len']} card(s), risk {it['risk']}, {tag_text}"
+                f"{i}) 列{src_stack}:{src_idx} -> 列{it['dest']} | "
+                f"{it['moved_len']} 张，风险 {it['risk']}，{tag_text}"
             )
-        return "Hint+: " + " ; ".join(parts)
+        return "提示+：" + "；".join(parts)
 
     def consume_animation_queue(self):
         now = time.time()
@@ -1200,11 +1237,11 @@ class ModernTkInterface(Interface):
         theme = self.theme
         self.active_buttons = []
 
-        c.create_text(self.width * 0.5, self.height * 0.2, text="Spider Card Modern", fill=theme["hud_text"], font=f"Helvetica {self.fs(48)} bold")
+        c.create_text(self.width * 0.5, self.height * 0.2, text="蜘蛛纸牌", fill=theme["hud_text"], font=f"Helvetica {self.fs(48)} bold")
         c.create_text(
             self.width * 0.5,
             self.height * 0.2 + 52,
-            text="Animated Spider Solitaire with customizable visuals",
+            text="支持自定义视觉风格的蜘蛛纸牌",
             fill=theme["hud_subtext"],
             font=f"Helvetica {self.fs(16)}",
         )
@@ -1234,23 +1271,23 @@ class ModernTkInterface(Interface):
             c.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=label, fill=text_fill, font=f"Helvetica {self.fs(16)} bold")
 
         # Row 1: quick start actions.
-        draw_button("Start New Game", "new", "#0f766e", row_x3, row_top, col_w3)
-        draw_button("Start Seeded Game", "seed", "#1f2937", row_x3 + col_w3 + col_gap, row_top, col_w3)
-        draw_button("Daily Challenge", "daily", "#1d4ed8", row_x3 + (col_w3 + col_gap) * 2, row_top, col_w3)
+        draw_button("开始新游戏", "new", "#0f766e", row_x3, row_top, col_w3)
+        draw_button("输入种子开局", "seed", "#1f2937", row_x3 + col_w3 + col_gap, row_top, col_w3)
+        draw_button("每日挑战", "daily", "#1d4ed8", row_x3 + (col_w3 + col_gap) * 2, row_top, col_w3)
 
         # Row 2: save/continue actions.
-        draw_button("Continue Game", "continue", "#0d9488", row_x2, row_mid, col_w2)
-        draw_button(f"Save Slot: {self.save_slot}", "save_slot", "#334155", row_x2 + col_w2 + col_gap, row_mid, col_w2)
+        draw_button("继续游戏", "continue", "#0d9488", row_x2, row_mid, col_w2)
+        draw_button(f"存档槽：{self.save_slot}", "save_slot", "#334155", row_x2 + col_w2 + col_gap, row_mid, col_w2)
 
         # Row 3: information/settings actions.
-        draw_button("Statistics", "stats", "#0ea5e9", row_x2, row_bot, col_w2)
-        draw_button("Game Settings", "settings", "#7c3aed", row_x2 + col_w2 + col_gap, row_bot, col_w2)
+        draw_button("统计信息", "stats", "#0ea5e9", row_x2, row_bot, col_w2)
+        draw_button("游戏设置", "settings", "#7c3aed", row_x2 + col_w2 + col_gap, row_bot, col_w2)
 
         slot_lines = []
         for row in self.slot_status:
-            state = "Saved" if row["exists"] else "Empty"
+            state = "已保存" if row["exists"] else "空"
             marker = " <" if row["slot"] == self.save_slot else ""
-            slot_lines.append(f"Slot {row['slot']}: {state}{marker}")
+            slot_lines.append(f"槽位 {row['slot']}：{state}{marker}")
         c.create_text(
             self.width * 0.5,
             row_top - self.fs(30),
@@ -1262,7 +1299,7 @@ class ModernTkInterface(Interface):
         c.create_text(
             self.width * 0.5,
             self.height - 34,
-            text="Keys: N new game, I seeded game, C continue, D daily, L slot, P stats, S settings",
+            text="快捷键：N 新游戏，I 种子开局，C 继续，D 每日，L 切换槽位，P 统计，S 设置",
             fill=theme["hud_subtext"],
             font=f"Helvetica {self.fs(13)}",
         )
@@ -1271,11 +1308,11 @@ class ModernTkInterface(Interface):
         theme = self.theme
         self.active_buttons = []
 
-        c.create_text(self.width * 0.5, self.height * 0.16, text="Game Settings", fill=theme["hud_text"], font=f"Helvetica {self.fs(42)} bold")
+        c.create_text(self.width * 0.5, self.height * 0.16, text="游戏设置", fill=theme["hud_text"], font=f"Helvetica {self.fs(42)} bold")
         c.create_text(
             self.width * 0.5,
             self.height * 0.16 + 46,
-            text="Suit count, difficulty bucket, card style, and board theme",
+            text="配置花色数量、难度分级、卡面风格和主题",
             fill=theme["hud_subtext"],
             font=f"Helvetica {self.fs(15)}",
         )
@@ -1285,13 +1322,13 @@ class ModernTkInterface(Interface):
         start_y = int(self.height * 0.34)
         gap = 20
         settings_defs = [
-            (f"Suit Count: {self.suit_count}", "suit_count", "#0f766e"),
-            (f"Difficulty Bucket: {self.difficulty_bucket}", "difficulty_bucket", "#14532d"),
-            (f"Card Style: {self.card_style}", "card_style", "#4338ca"),
-            (f"Theme: {self.theme_name}", "theme", "#9a3412"),
-            (f"Font Scale: {self.font_scale}", "font_scale", "#0f766e"),
-            (f"Save Slot: {self.save_slot}", "save_slot", "#334155"),
-            ("Back To Menu", "back_menu", "#374151"),
+            (f"花色数量：{self.suit_count}", "suit_count", "#0f766e"),
+            (f"难度分级：{self.BUCKET_TEXT_ZH.get(self.difficulty_bucket, self.difficulty_bucket)}", "difficulty_bucket", "#14532d"),
+            (f"卡面风格：{self.display_style_name()}", "card_style", "#4338ca"),
+            (f"主题：{self.display_theme_name()}", "theme", "#9a3412"),
+            (f"字体大小：{self.display_font_scale()}", "font_scale", "#0f766e"),
+            (f"存档槽：{self.save_slot}", "save_slot", "#334155"),
+            ("返回菜单", "back_menu", "#374151"),
         ]
 
         for i, (label, action, fill) in enumerate(settings_defs):
@@ -1315,7 +1352,7 @@ class ModernTkInterface(Interface):
         c.create_text(
             self.width * 0.5,
             self.height - 26,
-            text="Keys: 1/2/3/4 suits, Q/W/E bucket, B cycle bucket, C style, T theme, F font, L slot, Esc/M menu",
+            text="快捷键：1/2/3/4 花色，Q/W/E 难度，B 切换难度，C 风格，T 主题，F 字体，L 槽位，Esc/M 菜单",
             fill=theme["hud_subtext"],
             font=f"Helvetica {self.fs(12)}",
         )
@@ -1323,20 +1360,25 @@ class ModernTkInterface(Interface):
     def draw_stats(self, c):
         theme = self.theme
         self.active_buttons = []
-        c.create_text(self.width * 0.5, self.height * 0.14, text="Statistics", fill=theme["hud_text"], font=f"Helvetica {self.fs(42)} bold")
+        c.create_text(self.width * 0.5, self.height * 0.14, text="统计信息", fill=theme["hud_text"], font=f"Helvetica {self.fs(42)} bold")
         c.create_text(
             self.width * 0.5,
             self.height * 0.14 + 42,
-            text="Overall and per (suit count, difficulty bucket) performance",
+            text="总计与各（花色数量、难度分级）表现",
             fill=theme["hud_subtext"],
             font=f"Helvetica {self.fs(15)}",
         )
 
-        lines = [self.format_stats_line("Overall", self.stats["overall"])]
+        lines = [self.format_stats_line("总计", self.stats["overall"])]
         for suit_count in SUIT_COUNT_ORDER:
             for bucket_name in DIFFICULTY_BUCKET_ORDER:
                 key = profile_key(suit_count, bucket_name)
-                lines.append(self.format_stats_line(f"{suit_count}S/{bucket_name}", self.stats["by_profile"][key]))
+                lines.append(
+                    self.format_stats_line(
+                        f"{suit_count}花色/{self.BUCKET_TEXT_ZH.get(bucket_name, bucket_name)}",
+                        self.stats["by_profile"][key],
+                    )
+                )
 
         y = self.height * 0.30
         for line in lines:
@@ -1351,12 +1393,12 @@ class ModernTkInterface(Interface):
         y2 = y1 + bh
         self.active_buttons.append({"action": "back_menu", "rect": (x1, y1, x2, y2)})
         c.create_rectangle(x1, y1, x2, y2, fill="#374151", outline="#f8fafc", width=2)
-        c.create_text((x1 + x2) / 2, (y1 + y2) / 2, text="Back To Menu", fill="#f8fafc", font=f"Helvetica {self.fs(16)} bold")
+        c.create_text((x1 + x2) / 2, (y1 + y2) / 2, text="返回菜单", fill="#f8fafc", font=f"Helvetica {self.fs(16)} bold")
 
         c.create_text(
             self.width * 0.5,
             self.height - 24,
-            text="Key: P or Esc to return menu",
+            text="快捷键：P 或 Esc 返回菜单",
             fill=theme["hud_subtext"],
             font=f"Helvetica {self.fs(12)}",
         )
@@ -1383,21 +1425,27 @@ class ModernTkInterface(Interface):
             font=f"Helvetica {self.fs(14)} bold",
         )
 
-        c.create_text(16, 16, anchor="nw", text=f"Finished: {self.vm.finished_count}", fill=theme["hud_text"], font=f"Helvetica {self.fs(16)} bold")
-        mode = "Daily" if self.daily_mode else "Normal"
+        c.create_text(16, 16, anchor="nw", text=f"已完成：{self.vm.finished_count}", fill=theme["hud_text"], font=f"Helvetica {self.fs(16)} bold")
+        mode = "每日" if self.daily_mode else "普通"
         profile = self.current_profile_label()
-        seed_info = f" | seed {self.current_seed} ({self.seed_source})" if self.current_seed is not None else f" | seed ({self.seed_source})"
-        c.create_text(
-            16,
-            42,
-            anchor="nw",
-            text=(
-                f"Mode: {mode} | Profile: {profile} | Style: {self.card_style} | "
-                f"Theme: {self.theme_name} | Font: {self.font_scale} | Slot: {self.save_slot}{seed_info}"
-            ),
-            fill=theme["hud_subtext"],
-            font=f"Helvetica {self.fs(12)}",
+        seed_source_text = self.SEED_SOURCE_TEXT_ZH.get(self.seed_source, self.seed_source)
+        seed_info = (
+            f" | 种子 {self.current_seed}（{seed_source_text}）"
+            if self.current_seed is not None
+            else f" | 种子（{seed_source_text}）"
         )
+        if self.SHOW_TOP_LEFT_DETAIL:
+            c.create_text(
+                16,
+                42,
+                anchor="nw",
+                text=(
+                    f"模式：{mode} | 配置：{profile} | 风格：{self.display_style_name()} | "
+                    f"主题：{self.display_theme_name()} | 字体：{self.display_font_scale()} | 槽位：{self.save_slot}{seed_info}"
+                ),
+                fill=theme["hud_subtext"],
+                font=f"Helvetica {self.fs(12)}",
+            )
         c.create_text(16, self.height - 20, anchor="sw", text=self.message, fill=theme["hud_subtext"], font=f"Helvetica {self.fs(12)}")
 
     def draw_stack(self, c, stack_idx, cards, suppressed):
@@ -1613,21 +1661,21 @@ class ModernTkInterface(Interface):
             c.create_text(
                 self.width * 0.5 + 2,
                 self.height * 0.42 + 2,
-                text="VICTORY!",
+                text="胜利！",
                 fill="#1f2937",
                 font=f"Helvetica {size} bold",
             )
             c.create_text(
                 self.width * 0.5,
                 self.height * 0.42,
-                text="VICTORY!",
+                text="胜利！",
                 fill="#fde68a",
                 font=f"Helvetica {size} bold",
             )
             c.create_text(
                 self.width * 0.5,
                 self.height * 0.52,
-                text="Calculating settlement...",
+                text="正在结算...",
                 fill="#dbeafe",
                 font=f"Helvetica {subtitle_size}",
             )
@@ -1641,18 +1689,18 @@ class ModernTkInterface(Interface):
         x2 = x1 + pw
         y2 = y1 + ph
         c.create_rectangle(x1, y1, x2, y2, fill="#111827", outline="#f8fafc", width=2)
-        c.create_text((x1 + x2) / 2, y1 + 44, text="Victory Settlement", fill="#fde68a", font=f"Helvetica {self.fs(34)} bold")
+        c.create_text((x1 + x2) / 2, y1 + 44, text="胜利结算", fill="#fde68a", font=f"Helvetica {self.fs(34)} bold")
 
         moves = self.victory_summary.get("moves", 0)
         duration_sec = self.victory_summary.get("duration_sec", 0.0)
-        mode = self.victory_summary.get("mode", "Normal")
+        mode = self.victory_summary.get("mode", "普通")
         profile = self.victory_summary.get("profile", self.current_profile_label())
 
         lines = [
-            f"Mode: {mode}",
-            f"Profile: {profile}",
-            f"Moves Used: {moves}",
-            f"Time Used: {duration_sec:.1f}s",
+            f"模式：{mode}",
+            f"配置：{profile}",
+            f"使用步数：{moves}",
+            f"用时：{duration_sec:.1f} 秒",
         ]
         yy = y1 + 108
         for line in lines:
@@ -1662,7 +1710,7 @@ class ModernTkInterface(Interface):
         c.create_text(
             (x1 + x2) / 2,
             y2 - 34,
-            text="Press N for a new game or M to return menu",
+            text="按 N 开始新游戏，或按 M 返回菜单",
             fill="#93c5fd",
             font=f"Helvetica {self.fs(14)}",
         )
