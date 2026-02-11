@@ -11,15 +11,15 @@ from modern_ui.adapter import CoreAdapter
 from modern_ui.card_face import CardFaceRenderer
 from modern_ui.entities import CollectCard, DragState, MovingCard, Particle, VictoryCard
 from modern_ui.game_store import SLOT_COUNT, has_saved_game, list_slot_status, load_game, save_game
+from modern_ui.seed_pool_store import choose_seed_for_bucket
 from modern_ui.settings_store import load_settings, save_settings
-from modern_ui.stats_store import load_stats, record_game_lost, record_game_started, record_game_won, save_stats
+from modern_ui.stats_store import load_stats, profile_key, record_game_lost, record_game_started, record_game_won, save_stats
 from modern_ui.ui_config import (
     ANIM_DURATION,
     CARD_HEIGHT_RATIO,
     CARD_STYLE_ORDER,
     CARD_WIDTH_RATIO,
-    DIFFICULTY_ORDER,
-    DIFFICULTY_TO_SUITS,
+    DIFFICULTY_BUCKET_ORDER,
     FONT_SCALE_FACTOR,
     FONT_SCALE_ORDER,
     FPS_MS,
@@ -29,6 +29,7 @@ from modern_ui.ui_config import (
     STATS,
     STACK_GAP_RATIO,
     TEXTURED_STYLE_ASSETS,
+    SUIT_COUNT_ORDER,
     THEMES,
     THEME_ORDER,
     TOP_MARGIN_RATIO,
@@ -67,13 +68,15 @@ class ModernTkInterface(Interface):
         self.vm = None
         self.message = ""
 
-        self.difficulty = "Medium"
+        self.suit_count = 2
+        self.difficulty_bucket = "Medium"
         self.card_style = "Classic"
         self.theme_name = "Forest"
         self.font_scale = "Normal"
         self.daily_mode = False
         self.test_mode = False
         self.current_seed = None
+        self.seed_source = "random"
         self.save_slot = 1
 
         self.anim_queue = []
@@ -143,7 +146,8 @@ class ModernTkInterface(Interface):
 
     def load_persisted_settings(self):
         settings = load_settings()
-        self.difficulty = settings["difficulty"]
+        self.suit_count = int(settings["suit_count"])
+        self.difficulty_bucket = settings["difficulty_bucket"]
         self.card_style = settings["card_style"]
         self.theme_name = settings["theme_name"]
         self.font_scale = settings["font_scale"]
@@ -152,7 +156,8 @@ class ModernTkInterface(Interface):
     def persist_settings(self):
         save_settings(
             {
-                "difficulty": self.difficulty,
+                "suit_count": str(self.suit_count),
+                "difficulty_bucket": self.difficulty_bucket,
                 "card_style": self.card_style,
                 "theme_name": self.theme_name,
                 "font_scale": self.font_scale,
@@ -242,6 +247,20 @@ class ModernTkInterface(Interface):
         idx = order.index(current)
         return order[(idx + 1) % len(order)]
 
+    def current_profile_key(self):
+        return profile_key(self.suit_count, self.difficulty_bucket)
+
+    def current_profile_label(self):
+        return f"{self.suit_count}-Suit / {self.difficulty_bucket}"
+
+    def pick_seed_from_bucket(self, suit_count: int, difficulty_bucket: str):
+        seed = choose_seed_for_bucket(suit_count, difficulty_bucket)
+        if seed is None:
+            self.seed_source = "random"
+            return None
+        self.seed_source = "bucket"
+        return int(seed)
+
     def open_menu(self):
         self.stage = MENU
         self.drag = None
@@ -262,7 +281,7 @@ class ModernTkInterface(Interface):
     def open_settings(self):
         self.stage = SETTINGS
         self.active_buttons = []
-        self.message = "Configure difficulty, card style, and theme."
+        self.message = "Configure suit count, difficulty bucket, card style, and theme."
         self.request_redraw()
 
     def cycle_save_slot(self):
@@ -283,7 +302,7 @@ class ModernTkInterface(Interface):
         self.current_game_started_at = time.time()
         self.current_game_actions = 0
         self.current_game_recorded = False
-        self.stats = record_game_started(self.stats, self.difficulty)
+        self.stats = record_game_started(self.stats, self.suit_count, self.difficulty_bucket)
         save_stats(self.stats)
 
     def reset_victory_state(self):
@@ -299,7 +318,13 @@ class ModernTkInterface(Interface):
         if self.current_game_started_at is None:
             return
         duration = time.time() - self.current_game_started_at
-        self.stats = record_game_won(self.stats, self.difficulty, duration, self.current_game_actions)
+        self.stats = record_game_won(
+            self.stats,
+            self.suit_count,
+            self.difficulty_bucket,
+            duration,
+            self.current_game_actions,
+        )
         save_stats(self.stats)
         self.current_game_recorded = True
 
@@ -308,21 +333,25 @@ class ModernTkInterface(Interface):
             return
         if self.current_game_started_at is None:
             return
-        self.stats = record_game_lost(self.stats, self.difficulty)
+        self.stats = record_game_lost(self.stats, self.suit_count, self.difficulty_bucket)
         save_stats(self.stats)
         self.current_game_recorded = True
 
     def build_config(self, daily=False):
         cfg = GameConfig()
-        cfg.suits = DIFFICULTY_TO_SUITS[self.difficulty]
+        cfg.suits = self.suit_count
         if daily:
             today = date.today()
             base_seed = int(today.strftime("%Y%m%d"))
-            cfg.seed = base_seed * 10 + cfg.suits
+            bucket_idx = DIFFICULTY_BUCKET_ORDER.index(self.difficulty_bucket)
+            cfg.seed = base_seed * 100 + cfg.suits * 10 + bucket_idx
             self.current_seed = cfg.seed
             self.daily_mode = True
+            self.seed_source = "daily"
         else:
-            self.current_seed = None
+            picked_seed = self.pick_seed_from_bucket(cfg.suits, self.difficulty_bucket)
+            cfg.seed = picked_seed
+            self.current_seed = picked_seed
             self.daily_mode = False
         return cfg
 
@@ -349,7 +378,13 @@ class ModernTkInterface(Interface):
         self.reset_victory_state()
 
         mode = "Daily Challenge" if self.daily_mode else "Normal"
-        self.message = f"{mode} started ({self.difficulty}). Drag cards to move."
+        profile = self.current_profile_label()
+        if self.seed_source == "bucket":
+            self.message = f"{mode} started ({profile}, bucket seed {self.current_seed}). Drag cards to move."
+        elif self.seed_source == "daily":
+            self.message = f"{mode} started ({profile}, daily seed {self.current_seed}). Drag cards to move."
+        else:
+            self.message = f"{mode} started ({profile}, random seed). Drag cards to move."
         self.begin_game_tracking()
         self.save_current_game()
         self.request_redraw()
@@ -378,6 +413,7 @@ class ModernTkInterface(Interface):
         self.test_mode = False
         self.daily_mode = False
         self.current_seed = None
+        self.seed_source = "loaded"
         self.current_game_started_at = time.time()
         self.current_game_actions = 0
         self.current_game_recorded = False
@@ -435,6 +471,7 @@ class ModernTkInterface(Interface):
         self.test_mode = True
         self.daily_mode = False
         self.current_seed = None
+        self.seed_source = "test"
         self.current_game_started_at = None
         self.current_game_actions = 0
         self.current_game_recorded = True
@@ -453,7 +490,9 @@ class ModernTkInterface(Interface):
         self.victory_summary = {
             "moves": int(self.current_game_actions),
             "duration_sec": duration,
-            "difficulty": self.difficulty,
+            "suit_count": self.suit_count,
+            "difficulty_bucket": self.difficulty_bucket,
+            "profile": self.current_profile_label(),
             "mode": "Daily" if self.daily_mode else ("Test" if self.test_mode else "Normal"),
         }
         self.fx_rng.seed(time.time_ns())
@@ -530,13 +569,28 @@ class ModernTkInterface(Interface):
             if key == "escape":
                 self.open_menu()
             elif key == "1":
-                self.difficulty = "Easy"
+                self.suit_count = 1
                 self.persist_settings()
             elif key == "2":
-                self.difficulty = "Medium"
+                self.suit_count = 2
+                self.persist_settings()
+            elif key == "3":
+                self.suit_count = 3
                 self.persist_settings()
             elif key == "4":
-                self.difficulty = "Hard"
+                self.suit_count = 4
+                self.persist_settings()
+            elif key == "q":
+                self.difficulty_bucket = "Easy"
+                self.persist_settings()
+            elif key == "w":
+                self.difficulty_bucket = "Medium"
+                self.persist_settings()
+            elif key == "e":
+                self.difficulty_bucket = "Hard"
+                self.persist_settings()
+            elif key == "b":
+                self.difficulty_bucket = self.cycle_value(DIFFICULTY_BUCKET_ORDER, self.difficulty_bucket)
                 self.persist_settings()
             elif key == "c":
                 self.card_style = self.cycle_value(CARD_STYLE_ORDER, self.card_style)
@@ -731,8 +785,11 @@ class ModernTkInterface(Interface):
                     self.open_stats()
                 elif action == "save_slot":
                     self.cycle_save_slot()
-                elif action == "difficulty":
-                    self.difficulty = self.cycle_value(DIFFICULTY_ORDER, self.difficulty)
+                elif action == "suit_count":
+                    self.suit_count = self.cycle_value(SUIT_COUNT_ORDER, self.suit_count)
+                    self.persist_settings()
+                elif action == "difficulty_bucket":
+                    self.difficulty_bucket = self.cycle_value(DIFFICULTY_BUCKET_ORDER, self.difficulty_bucket)
                     self.persist_settings()
                 elif action == "card_style":
                     self.card_style = self.cycle_value(CARD_STYLE_ORDER, self.card_style)
@@ -1095,7 +1152,7 @@ class ModernTkInterface(Interface):
         c.create_text(
             self.width * 0.5,
             self.height * 0.16 + 46,
-            text="Difficulty, card style, and board theme",
+            text="Suit count, difficulty bucket, card style, and board theme",
             fill=theme["hud_subtext"],
             font=f"Helvetica {self.fs(15)}",
         )
@@ -1105,7 +1162,8 @@ class ModernTkInterface(Interface):
         start_y = int(self.height * 0.34)
         gap = 20
         settings_defs = [
-            (f"Difficulty: {self.difficulty}", "difficulty", "#0f766e"),
+            (f"Suit Count: {self.suit_count}", "suit_count", "#0f766e"),
+            (f"Difficulty Bucket: {self.difficulty_bucket}", "difficulty_bucket", "#14532d"),
             (f"Card Style: {self.card_style}", "card_style", "#4338ca"),
             (f"Theme: {self.theme_name}", "theme", "#9a3412"),
             (f"Font Scale: {self.font_scale}", "font_scale", "#0f766e"),
@@ -1134,7 +1192,7 @@ class ModernTkInterface(Interface):
         c.create_text(
             self.width * 0.5,
             self.height - 26,
-            text="Keys: 1/2/4 diff, C style, T theme, F font, L slot, Esc/M menu",
+            text="Keys: 1/2/3/4 suits, Q/W/E bucket, B cycle bucket, C style, T theme, F font, L slot, Esc/M menu",
             fill=theme["hud_subtext"],
             font=f"Helvetica {self.fs(12)}",
         )
@@ -1146,14 +1204,16 @@ class ModernTkInterface(Interface):
         c.create_text(
             self.width * 0.5,
             self.height * 0.14 + 42,
-            text="Overall and per-difficulty performance",
+            text="Overall and per (suit count, difficulty bucket) performance",
             fill=theme["hud_subtext"],
             font=f"Helvetica {self.fs(15)}",
         )
 
         lines = [self.format_stats_line("Overall", self.stats["overall"])]
-        for d in DIFFICULTY_ORDER:
-            lines.append(self.format_stats_line(d, self.stats["by_difficulty"][d]))
+        for suit_count in SUIT_COUNT_ORDER:
+            for bucket_name in DIFFICULTY_BUCKET_ORDER:
+                key = profile_key(suit_count, bucket_name)
+                lines.append(self.format_stats_line(f"{suit_count}S/{bucket_name}", self.stats["by_profile"][key]))
 
         y = self.height * 0.30
         for line in lines:
@@ -1196,13 +1256,14 @@ class ModernTkInterface(Interface):
 
         c.create_text(16, 16, anchor="nw", text=f"Finished: {self.vm.finished_count}", fill=theme["hud_text"], font=f"Helvetica {self.fs(16)} bold")
         mode = "Daily" if self.daily_mode else "Normal"
-        seed_info = f" | seed {self.current_seed}" if self.current_seed is not None else ""
+        profile = self.current_profile_label()
+        seed_info = f" | seed {self.current_seed} ({self.seed_source})" if self.current_seed is not None else f" | seed ({self.seed_source})"
         c.create_text(
             16,
             42,
             anchor="nw",
             text=(
-                f"Mode: {mode} | Difficulty: {self.difficulty} | Style: {self.card_style} | "
+                f"Mode: {mode} | Profile: {profile} | Style: {self.card_style} | "
                 f"Theme: {self.theme_name} | Font: {self.font_scale} | Slot: {self.save_slot}{seed_info}"
             ),
             fill=theme["hud_subtext"],
@@ -1434,11 +1495,11 @@ class ModernTkInterface(Interface):
         moves = self.victory_summary.get("moves", 0)
         duration_sec = self.victory_summary.get("duration_sec", 0.0)
         mode = self.victory_summary.get("mode", "Normal")
-        diff = self.victory_summary.get("difficulty", self.difficulty)
+        profile = self.victory_summary.get("profile", self.current_profile_label())
 
         lines = [
             f"Mode: {mode}",
-            f"Difficulty: {diff}",
+            f"Profile: {profile}",
             f"Moves Used: {moves}",
             f"Time Used: {duration_sec:.1f}s",
         ]

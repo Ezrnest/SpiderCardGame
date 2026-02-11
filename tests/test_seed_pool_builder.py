@@ -1,6 +1,6 @@
 import unittest
 
-from solver.seed_pool_builder import SeedRow, _quantile, bucket_solved_rows
+from solver.seed_pool_builder import SeedRow, _quantile, bucket_solved_rows, merge_rows
 
 
 class SeedPoolBuilderTestCase(unittest.TestCase):
@@ -37,6 +37,25 @@ class SeedPoolBuilderTestCase(unittest.TestCase):
         self.assertLessEqual(len(buckets["Easy"]), 1)
         self.assertLessEqual(len(buckets["Medium"]), 1)
         self.assertLessEqual(len(buckets["Hard"]), 1)
+
+    def test_merge_rows_prefers_incoming_by_seed(self):
+        existing = [
+            SeedRow(seed=100, status="unknown", score=None, band=None, reason="limits_reached", elapsed_ms=10.0, expanded_nodes=10, unique_states=10),
+            SeedRow(seed=101, status="solved", score=20.0, band="Easy", reason=None, elapsed_ms=12.0, expanded_nodes=12, unique_states=12),
+        ]
+        incoming = [
+            SeedRow(seed=100, status="solved", score=25.0, band="Medium", reason=None, elapsed_ms=8.0, expanded_nodes=8, unique_states=8),
+            SeedRow(seed=102, status="unknown", score=None, band=None, reason="limits_reached", elapsed_ms=9.0, expanded_nodes=9, unique_states=9),
+        ]
+
+        merged = merge_rows(existing, incoming)
+        self.assertEqual([100, 101, 102], [r.seed for r in merged])
+
+        by_seed = {r.seed: r for r in merged}
+        self.assertEqual("solved", by_seed[100].status)
+        self.assertEqual(25.0, by_seed[100].score)
+        self.assertEqual("solved", by_seed[101].status)
+        self.assertEqual("unknown", by_seed[102].status)
 
 
 if __name__ == "__main__":
