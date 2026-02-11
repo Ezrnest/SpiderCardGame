@@ -50048,6 +50048,6 @@
   },
   "build_elapsed_ms": 2069064.705,
   "files": {
-    "rows_csv": "/public4/home/a0s000050/Spider/data/seed_pool_2s_rows.csv"
+    "rows_csv": "seed_pool_2s_rows.csv"
   }
 }

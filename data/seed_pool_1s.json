@@ -138,6 +138,6 @@
   },
   "build_elapsed_ms": 7461.91,
   "files": {
-    "rows_csv": "/Users/lyc/PycharmProjects/SpiderCardGame/data/seed_pool_1s_rows.csv"
+    "rows_csv": "seed_pool_1s_rows.csv"
   }
 }

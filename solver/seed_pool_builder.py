@@ -200,6 +200,13 @@ def _derive_output_paths(meta_json_path: Path) -> tuple[Path, Path]:
     return meta_json_path, rows_csv
 
 
+def _relative_file_ref(meta_json_path: Path, target_path: Path) -> str:
+    try:
+        return str(target_path.relative_to(meta_json_path.parent))
+    except Exception:
+        return str(target_path.name)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build seed pools by quantile-bucketed difficulty.")
     parser.add_argument("--suits", type=int, choices=(1, 2, 3, 4), required=True, help="Suit count.")
@@ -421,7 +428,7 @@ def main() -> None:
         buckets["unknown"] = [row for row in merged_rows if row.status == "unknown"]
         payload = _build_payload(args, existing_rows, list(current_rows), started, in_progress=True)
         payload["files"] = {
-            "rows_csv": str(rows_csv_path),
+            "rows_csv": _relative_file_ref(meta_json_path, rows_csv_path),
         }
         _write_json_atomic(meta_json_path, payload)
         _write_csv_atomic(
@@ -455,7 +462,7 @@ def main() -> None:
 
     payload = _build_payload(args, existing_rows, rows, started, in_progress=False)
     payload["files"] = {
-        "rows_csv": str(rows_csv_path),
+        "rows_csv": _relative_file_ref(meta_json_path, rows_csv_path),
     }
     _write_json_atomic(meta_json_path, payload)
     _write_csv_atomic(
