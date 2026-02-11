@@ -1702,7 +1702,24 @@ class ModernTkInterface(Interface):
         return max(1, int(self.width * CARD_WIDTH_RATIO)), max(1, int(self.height * CARD_HEIGHT_RATIO))
 
     def visible_step(self):
-        return self.height * VISIBLE_STEP_RATIO
+        base_step = self.height * VISIBLE_STEP_RATIO
+        if self.vm is None or not self.vm.stacks:
+            return base_step
+
+        max_cards = max(len(stack.cards) for stack in self.vm.stacks)
+        if max_cards <= 1:
+            return base_step
+
+        sy = self.height * TOP_MARGIN_RATIO
+        _, ch = self.card_size()
+        # Keep a small bottom area for status text while fitting long piles on screen.
+        max_span = self.height - sy - ch - 32
+        if max_span <= 0:
+            return max(6.0, base_step * 0.4)
+
+        fit_step = max_span / (max_cards - 1)
+        min_step = max(6.0, ch * 0.08)
+        return max(min_step, min(base_step, fit_step))
 
     def stack_origin(self, stack_idx):
         stack_count = len(self.vm.stacks)

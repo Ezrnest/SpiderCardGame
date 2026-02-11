@@ -138,6 +138,7 @@ class _Transition:
     freed: int
     priority: int
     macro_steps: int = 0
+    state_key: Optional[StateKey] = None
 
 
 def _normalized_hidden_prefix(state: SolverState) -> tuple[int, ...]:
@@ -206,6 +207,26 @@ def _is_valid_sequence(stack: StackAtom, hidden_prefix: int, idx: int) -> bool:
             return False
         prev_id = upper_id
     return True
+
+
+def _valid_move_starts(stack: StackAtom, hidden_prefix: int) -> tuple[int, ...]:
+    """Return all indices that start a movable same-suit descending run."""
+    n = len(stack)
+    if n == 0 or hidden_prefix >= n:
+        return ()
+    hidden_prefix = max(0, hidden_prefix)
+
+    valid: list[int] = [n - 1]
+    contiguous = True
+    for idx in range(n - 2, hidden_prefix - 1, -1):
+        if contiguous:
+            lower = stack[idx]
+            upper = stack[idx + 1]
+            contiguous = _card_suit(lower) == _card_suit(upper) and _card_num(lower) == _card_num(upper) + 1
+        if contiguous:
+            valid.append(idx)
+    valid.reverse()
+    return tuple(valid)
 
 
 def _can_move(state: SolverState, src_stack: int, src_idx: int, dest_stack: int) -> bool:
@@ -386,8 +407,14 @@ def _splits_same_suit_run(stack: StackAtom, hidden_prefix: int, idx: int) -> boo
 
 def _legal_destinations(state: SolverState, src_stack: int, src_idx: int) -> list[int]:
     dests: list[int] = []
-    for d_idx in range(len(state.stacks)):
-        if _can_move(state, src_stack, src_idx, d_idx):
+    stacks = state.stacks
+    src_card_id = stacks[src_stack][src_idx]
+    src_num = _card_num(src_card_id)
+    for d_idx in range(len(stacks)):
+        if d_idx == src_stack:
+            continue
+        dest = stacks[d_idx]
+        if not dest or _card_num(dest[-1]) == src_num + 1:
             dests.append(d_idx)
     return dests
 
@@ -427,33 +454,34 @@ def _filter_destinations_by_policy(
 
 
 def _apply_move(state: SolverState, src_stack: int, src_idx: int, dest_stack: int) -> _Transition:
-    stacks = [list(stack) for stack in state.stacks]
+    stacks = list(state.stacks)
     hidden = list(_normalized_hidden_prefix(state))
 
-    src_original = state.stacks[src_stack]
+    src_original = stacks[src_stack]
     moving = src_original[src_idx:]
     moved_len = len(moving)
+    dest_original = stacks[dest_stack]
 
-    stacks[src_stack] = list(src_original[:src_idx])
-    hidden[src_stack] = min(hidden[src_stack], len(stacks[src_stack]))
+    new_src = src_original[:src_idx]
+    hidden[src_stack] = min(hidden[src_stack], len(new_src))
     revealed = 0
-    if len(stacks[src_stack]) > 0 and hidden[src_stack] >= len(stacks[src_stack]):
-        hidden[src_stack] = len(stacks[src_stack]) - 1
+    if len(new_src) > 0 and hidden[src_stack] >= len(new_src):
+        hidden[src_stack] = len(new_src) - 1
         revealed = 1
-    stacks[dest_stack].extend(moving)
-    hidden[dest_stack] = min(hidden[dest_stack], len(stacks[dest_stack]))
+    new_dest = dest_original + moving
+    hidden[dest_stack] = min(hidden[dest_stack], len(new_dest))
 
-    dest_stack_tuple = tuple(stacks[dest_stack])
-    dest_stack_tuple, new_dest_hidden_prefix, did_free, free_revealed = _free_once(dest_stack_tuple, hidden[dest_stack])
+    new_dest, new_dest_hidden_prefix, did_free, free_revealed = _free_once(new_dest, hidden[dest_stack])
     freed = 1 if did_free else 0
     revealed += free_revealed
     finished_count = state.finished_count + freed
-    stacks[dest_stack] = list(dest_stack_tuple)
+    stacks[src_stack] = new_src
+    stacks[dest_stack] = new_dest
     hidden[dest_stack] = new_dest_hidden_prefix
 
     out_state = SolverState(
         base=state.base,
-        stacks=tuple(tuple(stack) for stack in stacks),
+        stacks=tuple(stacks),
         hidden_prefix=tuple(hidden),
         finished_count=finished_count,
     )
@@ -509,9 +537,7 @@ def _pick_macro_follow_up(
     hidden = _normalized_hidden_prefix(state)
 
     for s_idx, stack in enumerate(state.stacks):
-        for idx in range(len(stack)):
-            if not _is_valid_sequence(stack, hidden[s_idx], idx):
-                continue
+        for idx in _valid_move_starts(stack, hidden[s_idx]):
             if policy.lock_same_suit_runs and _splits_same_suit_run(stack, hidden[s_idx], idx):
                 continue
 
@@ -546,9 +572,7 @@ def _pick_macro_follow_up(
         return None
 
     for s_idx, stack in enumerate(state.stacks):
-        for idx in range(len(stack)):
-            if not _is_valid_sequence(stack, hidden[s_idx], idx):
-                continue
+        for idx in _valid_move_starts(stack, hidden[s_idx]):
             moved_len = len(stack) - idx
             if moved_len < policy.macro_empty_restore_min_len:
                 continue
@@ -613,10 +637,7 @@ def _iter_transitions(
     hidden = _normalized_hidden_prefix(state)
 
     for s_idx, stack in enumerate(state.stacks):
-        for idx in range(len(stack)):
-            if not _is_valid_sequence(stack, hidden[s_idx], idx):
-                continue
-
+        for idx in _valid_move_starts(stack, hidden[s_idx]):
             if policy.lock_same_suit_runs and _splits_same_suit_run(stack, hidden[s_idx], idx):
                 continue
 
@@ -646,6 +667,15 @@ def _iter_transitions(
                         macro_steps=macro_steps,
                     )
                 key = _canonical_state_key(tr.state)
+                tr = _Transition(
+                    action=tr.action,
+                    state=tr.state,
+                    revealed=tr.revealed,
+                    freed=tr.freed,
+                    priority=tr.priority,
+                    macro_steps=tr.macro_steps,
+                    state_key=key,
+                )
                 prev = best_by_key.get(key)
                 if prev is None or tr.priority > prev.priority:
                     best_by_key[key] = tr
@@ -668,6 +698,15 @@ def _iter_transitions(
                     macro_steps=macro_steps,
                 )
             key = _canonical_state_key(deal_transition.state)
+            deal_transition = _Transition(
+                action=deal_transition.action,
+                state=deal_transition.state,
+                revealed=deal_transition.revealed,
+                freed=deal_transition.freed,
+                priority=deal_transition.priority,
+                macro_steps=deal_transition.macro_steps,
+                state_key=key,
+            )
             prev = best_by_key.get(key)
             if prev is None or deal_transition.priority > prev.priority:
                 best_by_key[key] = deal_transition
@@ -923,7 +962,7 @@ def solve_state(
             continue
 
         for tr in transitions:
-            key = _canonical_state_key(tr.state)
+            key = tr.state_key if tr.state_key is not None else _canonical_state_key(tr.state)
             if key in seen_keys:
                 duplicates += 1
                 continue
@@ -974,13 +1013,15 @@ def solve_state(
 
 def _count_legal_actions(state: SolverState) -> int:
     total = 0
+    stacks = state.stacks
     hidden = _normalized_hidden_prefix(state)
-    for s_idx, stack in enumerate(state.stacks):
-        for idx in range(len(stack)):
-            if not _is_valid_sequence(stack, hidden[s_idx], idx):
-                continue
-            for d_idx in range(len(state.stacks)):
-                if _can_move(state, s_idx, idx, d_idx):
+    for s_idx, stack in enumerate(stacks):
+        for idx in _valid_move_starts(stack, hidden[s_idx]):
+            src_num = _card_num(stack[idx])
+            for d_idx, dest in enumerate(stacks):
+                if d_idx == s_idx:
+                    continue
+                if not dest or _card_num(dest[-1]) == src_num + 1:
                     total += 1
     if state.base:
         total += 1

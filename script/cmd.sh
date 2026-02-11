@@ -25,4 +25,5 @@ python -m solver.seed_pool_builder \
   --workers 8 \
   --max-seconds 10 \
   --max-nodes 2000000 \
-  --max-frontier 1000000
+  --max-frontier 1000000 \
+  --start-seed 1
