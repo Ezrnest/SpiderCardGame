@@ -383,11 +383,53 @@ class ModernTkInterface(Interface):
         mode = "Daily Challenge" if self.daily_mode else "Normal"
         profile = self.current_profile_label()
         if self.seed_source == "bucket":
-            self.message = f"{mode} started ({profile}, bucket seed {self.current_seed}). Drag cards to move."
+            self.message = f"{mode} started ({profile}, bucket seed {self.current_seed}). Drag cards to move. Press G to restart same seed."
         elif self.seed_source == "daily":
-            self.message = f"{mode} started ({profile}, daily seed {self.current_seed}). Drag cards to move."
+            self.message = f"{mode} started ({profile}, daily seed {self.current_seed}). Drag cards to move. Press G to restart same seed."
         else:
             self.message = f"{mode} started ({profile}, random seed). Drag cards to move."
+        self.begin_game_tracking()
+        self.save_current_game()
+        self.request_redraw()
+
+    def restart_same_seed_game(self):
+        if self.stage != GAME:
+            return
+        if self.current_seed is None:
+            self.message = "Current game seed is unavailable. Same-seed restart is only supported for seeded runs."
+            self.request_redraw()
+            return
+
+        self.mark_game_lost_if_needed()
+
+        cfg = GameConfig()
+        cfg.suits = self.suit_count
+        cfg.seed = int(self.current_seed)
+
+        core = Core()
+        core.registerInterface(self)
+        core.registerPlayer(DUMMY_PLAYER)
+        core.startGame(cfg)
+        self.vm = CoreAdapter.snapshot(core)
+        self.test_mode = False
+        self.daily_mode = False
+        self.seed_source = "replay"
+
+        self.drag = None
+        self.hover_drop_stack = None
+        self.hover_drop_valid = False
+        self.pending_move_anim = None
+
+        self.anim_queue.clear()
+        self.anim_cards.clear()
+        self.particles.clear()
+        self.collect_cards.clear()
+        self.reset_victory_state()
+
+        self.message = (
+            f"Same-seed restart ({self.current_profile_label()}, seed {self.current_seed}). "
+            "Drag cards to move."
+        )
         self.begin_game_tracking()
         self.save_current_game()
         self.request_redraw()
@@ -622,6 +664,8 @@ class ModernTkInterface(Interface):
                 if not self.confirm_overwrite_saved_game("a new game"):
                     return
                 self.start_new_game(daily=False)
+            elif key == "g":
+                self.restart_same_seed_game()
             elif key == "d":
                 if not self.core.askDeal():
                     self.message = "No cards left in base."
