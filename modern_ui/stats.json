@@ -1,6 +1,6 @@
 {
   "overall": {
-    "games_started": 8,
+    "games_started": 9,
     "games_won": 0,
     "total_duration_sec": 0.0,
     "total_actions": 0,
@@ -33,7 +33,7 @@
       "best_streak": 0
     },
     "2s-Easy": {
-      "games_started": 1,
+      "games_started": 2,
       "games_won": 0,
       "total_duration_sec": 0.0,
       "total_actions": 0,

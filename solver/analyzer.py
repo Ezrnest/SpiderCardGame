@@ -12,6 +12,7 @@ from base.Core import Card, GameConfig
 
 CardAtom = int
 StackAtom = tuple[CardAtom, ...]
+StateKey = tuple[tuple[int, ...], tuple[tuple[StackAtom, int], ...], int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +21,8 @@ class SolverState:
 
     base: tuple[int, ...]
     stacks: tuple[StackAtom, ...]
+    # Number of hidden cards from bottom for each stack.
+    hidden_prefix: tuple[int, ...] = ()
     finished_count: int = 0
 
 
@@ -137,13 +140,21 @@ class _Transition:
     macro_steps: int = 0
 
 
-def _canonical_state_key(state: SolverState) -> tuple[tuple[int, ...], tuple[StackAtom, ...], int]:
+def _normalized_hidden_prefix(state: SolverState) -> tuple[int, ...]:
+    if len(state.hidden_prefix) == len(state.stacks):
+        return state.hidden_prefix
+    return tuple(0 for _ in state.stacks)
+
+
+def _canonical_state_key(state: SolverState) -> StateKey:
     """
     Canonical key for dedup:
     - keep base order (deal order matters)
     - sort tableau columns to collapse permutation symmetry
     """
-    return state.base, tuple(sorted(state.stacks)), state.finished_count
+    hidden = _normalized_hidden_prefix(state)
+    stacks_with_hidden = tuple((state.stacks[i], hidden[i]) for i in range(len(state.stacks)))
+    return state.base, tuple(sorted(stacks_with_hidden)), state.finished_count
 
 
 def _card_suit(card_id: int) -> int:
@@ -161,7 +172,7 @@ def _is_goal(state: SolverState) -> bool:
 
 
 def build_initial_state(config: GameConfig) -> SolverState:
-    """Build the initial state. Solver assumes all cards are known."""
+    """Build the initial state with hidden-prefix information."""
 
     base_cards = config.initBase()
     stacks: list[list[CardAtom]] = [[] for _ in range(config.stackCount)]
@@ -177,11 +188,16 @@ def build_initial_state(config: GameConfig) -> SolverState:
         draw_count -= 1
 
     base = tuple(card.id for card in base_cards)
-    return SolverState(base=base, stacks=tuple(tuple(stack) for stack in stacks), finished_count=0)
+    stacks_tuple = tuple(tuple(stack) for stack in stacks)
+    hidden_prefix = tuple(max(0, len(stack) - 1) for stack in stacks_tuple)
+    return SolverState(base=base, stacks=stacks_tuple, hidden_prefix=hidden_prefix, finished_count=0)
 
 
-def _is_valid_sequence(stack: StackAtom, idx: int) -> bool:
+def _is_valid_sequence(stack: StackAtom, hidden_prefix: int, idx: int) -> bool:
     if idx < 0 or idx >= len(stack):
+        return False
+    # Cannot start moving from hidden cards.
+    if idx < hidden_prefix:
         return False
     prev_id = stack[idx]
     for i in range(idx + 1, len(stack)):
@@ -199,7 +215,8 @@ def _can_move(state: SolverState, src_stack: int, src_idx: int, dest_stack: int)
         return False
     if src_stack == dest_stack:
         return False
-    if not _is_valid_sequence(state.stacks[src_stack], src_idx):
+    hidden = _normalized_hidden_prefix(state)
+    if not _is_valid_sequence(state.stacks[src_stack], hidden[src_stack], src_idx):
         return False
 
     dest = state.stacks[dest_stack]
@@ -211,37 +228,54 @@ def _can_move(state: SolverState, src_stack: int, src_idx: int, dest_stack: int)
     return _card_num(dest_top_id) == _card_num(src_card_id) + 1
 
 
-def _free_once(stack: StackAtom) -> tuple[StackAtom, bool]:
+def _free_once(stack: StackAtom, hidden_prefix: int) -> tuple[StackAtom, int, bool, int]:
     if len(stack) < Card.NUM_PER_SUIT:
-        return stack, False
+        return stack, hidden_prefix, False, 0
+    # If top 13 contains hidden cards, cannot auto-free.
+    if len(stack) - Card.NUM_PER_SUIT < hidden_prefix:
+        return stack, hidden_prefix, False, 0
 
     suit = _card_suit(stack[-1])
     for i in range(Card.NUM_PER_SUIT):
         card_id = stack[len(stack) - i - 1]
         if _card_suit(card_id) != suit or _card_num(card_id) != i:
-            return stack, False
+            return stack, hidden_prefix, False, 0
 
-    return stack[: len(stack) - Card.NUM_PER_SUIT], True
+    new_stack = stack[: len(stack) - Card.NUM_PER_SUIT]
+    new_hidden_prefix = min(hidden_prefix, len(new_stack))
+    revealed = 0
+    if len(new_stack) > 0 and new_hidden_prefix >= len(new_stack):
+        new_hidden_prefix = len(new_stack) - 1
+        revealed = 1
+    return new_stack, new_hidden_prefix, True, revealed
 
 
-def _auto_free_all(stacks: tuple[StackAtom, ...], finished_count: int) -> tuple[tuple[StackAtom, ...], int, int]:
+def _auto_free_all(
+    stacks: tuple[StackAtom, ...],
+    hidden_prefix: tuple[int, ...],
+    finished_count: int,
+) -> tuple[tuple[StackAtom, ...], tuple[int, ...], int, int, int]:
     """Apply free repeatedly across all stacks until stable."""
 
     out = list(stacks)
+    hidden = list(hidden_prefix)
     freed_total = 0
+    revealed_total = 0
     changed = True
     while changed:
         changed = False
         for idx in range(len(out)):
-            new_stack, did_free = _free_once(out[idx])
+            new_stack, new_hidden_prefix, did_free, revealed = _free_once(out[idx], hidden[idx])
             if not did_free:
                 continue
             changed = True
             freed_total += 1
             finished_count += 1
             out[idx] = new_stack
+            hidden[idx] = new_hidden_prefix
+            revealed_total += revealed
 
-    return tuple(out), finished_count, freed_total
+    return tuple(out), tuple(hidden), finished_count, freed_total, revealed_total
 
 
 def _ordered_links(stack: StackAtom) -> tuple[int, int]:
@@ -339,8 +373,11 @@ def _is_immediate_reverse(
     return src_idx == expected_src_idx
 
 
-def _splits_same_suit_run(stack: StackAtom, idx: int) -> bool:
+def _splits_same_suit_run(stack: StackAtom, hidden_prefix: int, idx: int) -> bool:
     if idx <= 0:
+        return False
+    # If the lower card is hidden, this is not a movable run split.
+    if idx - 1 < hidden_prefix:
         return False
     below = stack[idx - 1]
     cur = stack[idx]
@@ -391,23 +428,33 @@ def _filter_destinations_by_policy(
 
 def _apply_move(state: SolverState, src_stack: int, src_idx: int, dest_stack: int) -> _Transition:
     stacks = [list(stack) for stack in state.stacks]
+    hidden = list(_normalized_hidden_prefix(state))
 
     src_original = state.stacks[src_stack]
     moving = src_original[src_idx:]
     moved_len = len(moving)
 
     stacks[src_stack] = list(src_original[:src_idx])
+    hidden[src_stack] = min(hidden[src_stack], len(stacks[src_stack]))
+    revealed = 0
+    if len(stacks[src_stack]) > 0 and hidden[src_stack] >= len(stacks[src_stack]):
+        hidden[src_stack] = len(stacks[src_stack]) - 1
+        revealed = 1
     stacks[dest_stack].extend(moving)
+    hidden[dest_stack] = min(hidden[dest_stack], len(stacks[dest_stack]))
 
     dest_stack_tuple = tuple(stacks[dest_stack])
-    dest_stack_tuple, did_free = _free_once(dest_stack_tuple)
+    dest_stack_tuple, new_dest_hidden_prefix, did_free, free_revealed = _free_once(dest_stack_tuple, hidden[dest_stack])
     freed = 1 if did_free else 0
+    revealed += free_revealed
     finished_count = state.finished_count + freed
     stacks[dest_stack] = list(dest_stack_tuple)
+    hidden[dest_stack] = new_dest_hidden_prefix
 
     out_state = SolverState(
         base=state.base,
         stacks=tuple(tuple(stack) for stack in stacks),
+        hidden_prefix=tuple(hidden),
         finished_count=finished_count,
     )
 
@@ -419,7 +466,7 @@ def _apply_move(state: SolverState, src_stack: int, src_idx: int, dest_stack: in
         dest_stack=dest_stack,
         moved_len=moved_len,
     )
-    return _Transition(action=action, state=out_state, revealed=0, freed=freed, priority=priority, macro_steps=0)
+    return _Transition(action=action, state=out_state, revealed=revealed, freed=freed, priority=priority, macro_steps=0)
 
 
 def _apply_deal(state: SolverState) -> Optional[_Transition]:
@@ -430,24 +477,27 @@ def _apply_deal(state: SolverState) -> Optional[_Transition]:
 
     base = list(state.base)
     stacks = [list(stack) for stack in state.stacks]
+    hidden = list(_normalized_hidden_prefix(state))
 
     dest = 0
     pending = draw_count
     while pending > 0:
         card_id = base.pop()
         stacks[dest].append(card_id)
+        hidden[dest] = min(hidden[dest], len(stacks[dest]) - 1)
         dest += 1
         if dest >= stack_count:
             dest = 0
         pending -= 1
 
     stacks_tuple = tuple(tuple(stack) for stack in stacks)
-    stacks_tuple, finished_count, freed = _auto_free_all(stacks_tuple, state.finished_count)
+    hidden_tuple = tuple(hidden)
+    stacks_tuple, hidden_tuple, finished_count, freed, revealed = _auto_free_all(stacks_tuple, hidden_tuple, state.finished_count)
 
-    out_state = SolverState(base=tuple(base), stacks=stacks_tuple, finished_count=finished_count)
+    out_state = SolverState(base=tuple(base), stacks=stacks_tuple, hidden_prefix=hidden_tuple, finished_count=finished_count)
     action = Action(kind="DEAL", draw_count=draw_count)
     priority = -15 + freed * 140
-    return _Transition(action=action, state=out_state, revealed=0, freed=freed, priority=priority, macro_steps=0)
+    return _Transition(action=action, state=out_state, revealed=revealed, freed=freed, priority=priority, macro_steps=0)
 
 
 def _pick_macro_follow_up(
@@ -456,12 +506,13 @@ def _pick_macro_follow_up(
     last_action: Optional[Action],
 ) -> Optional[_Transition]:
     best: Optional[_Transition] = None
+    hidden = _normalized_hidden_prefix(state)
 
     for s_idx, stack in enumerate(state.stacks):
         for idx in range(len(stack)):
-            if not _is_valid_sequence(stack, idx):
+            if not _is_valid_sequence(stack, hidden[s_idx], idx):
                 continue
-            if policy.lock_same_suit_runs and _splits_same_suit_run(stack, idx):
+            if policy.lock_same_suit_runs and _splits_same_suit_run(stack, hidden[s_idx], idx):
                 continue
 
             moved_len = len(stack) - idx
@@ -496,7 +547,7 @@ def _pick_macro_follow_up(
 
     for s_idx, stack in enumerate(state.stacks):
         for idx in range(len(stack)):
-            if not _is_valid_sequence(stack, idx):
+            if not _is_valid_sequence(stack, hidden[s_idx], idx):
                 continue
             moved_len = len(stack) - idx
             if moved_len < policy.macro_empty_restore_min_len:
@@ -557,15 +608,16 @@ def _iter_transitions(
     policy: SearchPolicy = DEFAULT_POLICY,
     last_action: Optional[Action] = None,
 ) -> list[_Transition]:
-    best_by_key: dict[tuple[tuple[int, ...], tuple[StackAtom, ...], int], _Transition] = {}
+    best_by_key: dict[StateKey, _Transition] = {}
     generated_move_count = 0
+    hidden = _normalized_hidden_prefix(state)
 
     for s_idx, stack in enumerate(state.stacks):
         for idx in range(len(stack)):
-            if not _is_valid_sequence(stack, idx):
+            if not _is_valid_sequence(stack, hidden[s_idx], idx):
                 continue
 
-            if policy.lock_same_suit_runs and _splits_same_suit_run(stack, idx):
+            if policy.lock_same_suit_runs and _splits_same_suit_run(stack, hidden[s_idx], idx):
                 continue
 
             moved_len = len(stack) - idx
@@ -811,7 +863,7 @@ def solve_state(
 
     counter = 0
     parent: dict[SolverState, tuple[Optional[SolverState], Optional[_Transition]]] = {initial_state: (None, None)}
-    seen_keys: set[tuple[tuple[int, ...], tuple[StackAtom, ...], int]] = {_canonical_state_key(initial_state)}
+    seen_keys: set[StateKey] = {_canonical_state_key(initial_state)}
 
     frontier: list[tuple[int, int, int, SolverState]] = []
     initial_prio = -_state_potential(initial_state)
@@ -922,9 +974,10 @@ def solve_state(
 
 def _count_legal_actions(state: SolverState) -> int:
     total = 0
+    hidden = _normalized_hidden_prefix(state)
     for s_idx, stack in enumerate(state.stacks):
         for idx in range(len(stack)):
-            if not _is_valid_sequence(stack, idx):
+            if not _is_valid_sequence(stack, hidden[s_idx], idx):
                 continue
             for d_idx in range(len(state.stacks)):
                 if _can_move(state, s_idx, idx, d_idx):

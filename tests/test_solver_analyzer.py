@@ -122,6 +122,24 @@ class SolverAnalyzerTestCase(unittest.TestCase):
         transitions = _iter_transitions(state)
         self.assertFalse(any(t.action.kind == "MOVE" and t.action.src_stack == 0 and t.action.src_idx == 1 for t in transitions))
 
+    def test_hidden_cards_cannot_be_part_of_moved_sequence(self):
+        # stack0: hidden 8♠, visible 7♠, visible 6♠
+        state = SolverState(
+            base=(),
+            stacks=(
+                (visible(0, 8), visible(0, 7), visible(0, 6), visible(0, 5)),
+                (visible(1, 9),),
+                tuple(),
+            ),
+            hidden_prefix=(1, 0, 0),
+            finished_count=0,
+        )
+        transitions = _iter_transitions(state)
+        # Cannot move from idx=0 because card is hidden, even though it forms a valid run by rank/suit.
+        self.assertFalse(any(t.action.kind == "MOVE" and t.action.src_stack == 0 and t.action.src_idx == 0 for t in transitions))
+        # Moving from visible start idx=1 remains allowed.
+        self.assertTrue(any(t.action.kind == "MOVE" and t.action.src_stack == 0 and t.action.src_idx == 1 for t in transitions))
+
     def test_policy_defers_deal_when_moves_exist(self):
         state = SolverState(
             base=(visible(0, 1),),

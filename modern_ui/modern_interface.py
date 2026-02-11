@@ -57,6 +57,9 @@ else:
 
 
 class ModernTkInterface(Interface):
+    TEXTURED_DRAG_FULL_LIMIT = 5
+    TEXTURED_DRAG_SHADOW_LIMIT = 1
+
     def __init__(self, width=1200, height=760):
         super().__init__()
         self.width = width
@@ -713,7 +716,7 @@ class ModernTkInterface(Interface):
         self.request_redraw()
 
         now = time.time()
-        if now - self.last_drag_spark > 0.04:
+        if self.card_style not in TEXTURED_STYLE_ASSETS and now - self.last_drag_spark > 0.04:
             self.last_drag_spark = now
             self.spawn_spark_shower(
                 self.drag.x + self.card_size()[0] * 0.5,
@@ -1309,11 +1312,33 @@ class ModernTkInterface(Interface):
             return
         step = self.visible_step()
         cw, ch = self.card_size()
+        textured_drag = self.card_style in TEXTURED_STYLE_ASSETS
+        card_count = len(self.drag.cards)
+        full_limit = self.TEXTURED_DRAG_FULL_LIMIT if textured_drag else card_count
+        shadow_limit = self.TEXTURED_DRAG_SHADOW_LIMIT if textured_drag else card_count
+
         for i, card in enumerate(self.drag.cards):
             x = self.drag.x
             y = self.drag.y + i * step
-            c.create_rectangle(x + 5, y + 5, x + cw + 5, y + ch + 5, fill="#000000", outline="")
-            self.draw_card(c, x, y, card.hidden, card.suit, card.num, selected=True)
+            if i < shadow_limit:
+                c.create_rectangle(x + 5, y + 5, x + cw + 5, y + ch + 5, fill="#000000", outline="")
+            if i < full_limit:
+                self.draw_card(c, x, y, card.hidden, card.suit, card.num, selected=(i == 0))
+            else:
+                outline = self.theme["card_select"] if i == 0 else self.theme["card_border"]
+                c.create_rectangle(x, y, x + cw, y + ch, fill=self.theme["card_front"], outline=outline, width=2 if i == 0 else 1)
+
+        if textured_drag and card_count > full_limit:
+            badge_x = self.drag.x + cw - 10
+            badge_y = self.drag.y + min((full_limit - 1) * step, step * 2.0) + 16
+            c.create_rectangle(badge_x - 52, badge_y - 14, badge_x + 10, badge_y + 14, fill="#111827", outline="#f8fafc", width=1)
+            c.create_text(
+                badge_x - 21,
+                badge_y,
+                text=f"+{card_count - full_limit}",
+                fill="#f8fafc",
+                font=f"Helvetica {self.fs(11)} bold",
+            )
 
     def draw_particles(self, c):
         now = time.time()
