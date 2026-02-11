@@ -101,7 +101,9 @@ class ModernUiSeedAndSettingsTestCase(unittest.TestCase):
     def test_seed_pool_missing_file_returns_none(self):
         with tempfile.TemporaryDirectory() as td:
             pool_path = Path(td) / "missing_seed_pool_4s.json"
-            with patch.object(seed_pool_store, "seed_pool_path", return_value=pool_path):
+            with patch.object(seed_pool_store, "seed_pool_path", return_value=pool_path), patch.object(
+                seed_pool_store, "_legacy_seed_pool_path", return_value=pool_path
+            ):
                 picked = seed_pool_store.choose_seed_for_bucket(4, "Hard", rng=random.Random(1))
         self.assertIsNone(picked)
 

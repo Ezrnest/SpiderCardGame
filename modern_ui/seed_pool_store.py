@@ -6,12 +6,18 @@ from modern_ui.ui_config import DIFFICULTY_BUCKET_ORDER
 
 
 def seed_pool_path(suit_count: int) -> Path:
+    return Path(__file__).resolve().parents[1] / "data" / f"seed_pool_{int(suit_count)}s.json"
+
+
+def _legacy_seed_pool_path(suit_count: int) -> Path:
     return Path(__file__).with_name(f"seed_pool_{int(suit_count)}s.json")
 
 
 def load_seed_pool_buckets(suit_count: int) -> dict[str, list[int]]:
     out = {key: [] for key in DIFFICULTY_BUCKET_ORDER}
     path = seed_pool_path(suit_count)
+    if not path.exists():
+        path = _legacy_seed_pool_path(suit_count)
     if not path.exists():
         return out
     try:

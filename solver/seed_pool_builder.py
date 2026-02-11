@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import math
 import os
@@ -188,7 +189,14 @@ def _iter_rows_parallel(
 
 
 def _default_output_path(suits: int) -> Path:
-    return Path(__file__).resolve().parents[1] / "modern_ui" / f"seed_pool_{suits}s.json"
+    return Path(__file__).resolve().parents[1] / "data" / f"seed_pool_{suits}s.json"
+
+
+def _derive_output_paths(meta_json_path: Path) -> tuple[Path, Path]:
+    base_name = meta_json_path.stem
+    parent = meta_json_path.parent
+    rows_csv = parent / f"{base_name}_rows.csv"
+    return meta_json_path, rows_csv
 
 
 def parse_args() -> argparse.Namespace:
@@ -207,7 +215,7 @@ def parse_args() -> argparse.Namespace:
         "--out",
         type=str,
         default="",
-        help="Output JSON path. Default: modern_ui/seed_pool_{suits}s.json",
+        help="Output JSON path. Default: data/seed_pool_{suits}s.json",
     )
     parser.add_argument("--raw-jsonl", type=str, default="", help="Optional raw per-seed JSONL path.")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite output instead of merging existing json.")
@@ -229,8 +237,38 @@ def _stats(rows: list[SeedRow]) -> dict:
     }
 
 
-def _load_existing_rows(path: Path) -> list[SeedRow]:
-    if not path.exists():
+def _load_existing_rows_from_csv(path: Path) -> list[SeedRow]:
+    if not path.exists() or not path.is_file():
+        return []
+    rows: list[SeedRow] = []
+    try:
+        with path.open("r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            for item in reader:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    rows.append(
+                        SeedRow(
+                            seed=int(item.get("seed", "0")),
+                            status=str(item.get("status", "")),
+                            score=(None if not item.get("score") else float(item["score"])),
+                            band=(None if not item.get("band") else str(item["band"])),
+                            reason=(None if not item.get("reason") else str(item["reason"])),
+                            elapsed_ms=float(item.get("elapsed_ms", "0") or 0.0),
+                            expanded_nodes=int(item.get("expanded_nodes", "0") or 0),
+                            unique_states=int(item.get("unique_states", "0") or 0),
+                        )
+                    )
+                except Exception:
+                    continue
+    except Exception:
+        return []
+    return rows
+
+
+def _load_existing_rows_from_legacy_json(path: Path) -> list[SeedRow]:
+    if not path.exists() or not path.is_file():
         return []
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -248,6 +286,19 @@ def _load_existing_rows(path: Path) -> list[SeedRow]:
         except Exception:
             continue
     return rows
+
+
+def _load_existing_rows(rows_csv_path: Path, meta_json_path: Path) -> list[SeedRow]:
+    from_csv = _load_existing_rows_from_csv(rows_csv_path)
+    if from_csv:
+        return from_csv
+    # Legacy csv fallback from previous format.
+    legacy_details_csv = rows_csv_path.with_name(rows_csv_path.stem.replace("_rows", "_details") + rows_csv_path.suffix)
+    if legacy_details_csv != rows_csv_path:
+        from_legacy_csv = _load_existing_rows_from_csv(legacy_details_csv)
+        if from_legacy_csv:
+            return from_legacy_csv
+    return _load_existing_rows_from_legacy_json(meta_json_path)
 
 
 def merge_rows(existing: list[SeedRow], incoming: list[SeedRow]) -> list[SeedRow]:
@@ -291,7 +342,6 @@ def _build_payload(
         "stats": stats,
         "quantiles": quantiles,
         "buckets": {key: [row.seed for row in rows_for_bucket] for key, rows_for_bucket in buckets.items()},
-        "all_rows": [row.to_dict() for row in merged_rows],
         "build_elapsed_ms": round((time.perf_counter() - started) * 1000.0, 3),
     }
 
@@ -302,14 +352,54 @@ def _write_json_atomic(path: Path, payload: dict) -> None:
     tmp.replace(path)
 
 
+def _write_csv_atomic(path: Path, fieldnames: list[str], rows: list[dict]) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+    tmp.replace(path)
+
+
+def _bucket_by_seed(buckets: dict[str, list[SeedRow]]) -> dict[int, str]:
+    mapping: dict[int, str] = {}
+    for bucket_name, rows in buckets.items():
+        for row in rows:
+            mapping[row.seed] = bucket_name
+    return mapping
+
+
+def _build_rows_csv_rows(merged_rows: list[SeedRow], buckets: dict[str, list[SeedRow]]) -> list[dict]:
+    bucket_map = _bucket_by_seed(buckets)
+    out: list[dict] = []
+    for row in merged_rows:
+        score = "" if row.score is None else f"{float(row.score):.6f}"
+        out.append(
+            {
+                "seed": int(row.seed),
+                "status": row.status,
+                "score": score,
+                "bucket": bucket_map.get(row.seed, ""),
+                "band": ("" if row.band is None else row.band),
+                "reason": ("" if row.reason is None else row.reason),
+                "elapsed_ms": f"{float(row.elapsed_ms):.3f}",
+                "expanded_nodes": int(row.expanded_nodes),
+                "unique_states": int(row.unique_states),
+            }
+        )
+    return out
+
+
 def main() -> None:
     args = parse_args()
     seeds = list(range(args.start_seed, args.start_seed + args.count))
-    out_path = Path(args.out).expanduser()
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    meta_json_path = Path(args.out).expanduser()
+    meta_json_path.parent.mkdir(parents=True, exist_ok=True)
+    meta_json_path, rows_csv_path = _derive_output_paths(meta_json_path)
     existing_rows: list[SeedRow] = []
     if not args.overwrite:
-        existing_rows = _load_existing_rows(out_path)
+        existing_rows = _load_existing_rows(rows_csv_path, meta_json_path)
 
     started = time.perf_counter()
     last_save_at = started
@@ -322,11 +412,23 @@ def main() -> None:
         now = time.perf_counter()
         if (now - last_save_at) < interval:
             return
+        merged_rows = merge_rows(existing_rows, list(current_rows))
+        solved_buckets, _ = bucket_solved_rows(merged_rows)
+        buckets = dict(solved_buckets)
+        buckets["unknown"] = [row for row in merged_rows if row.status == "unknown"]
         payload = _build_payload(args, existing_rows, list(current_rows), started, in_progress=True)
-        _write_json_atomic(out_path, payload)
+        payload["files"] = {
+            "rows_csv": str(rows_csv_path),
+        }
+        _write_json_atomic(meta_json_path, payload)
+        _write_csv_atomic(
+            rows_csv_path,
+            fieldnames=["seed", "status", "score", "bucket", "band", "reason", "elapsed_ms", "expanded_nodes", "unique_states"],
+            rows=_build_rows_csv_rows(merged_rows, buckets),
+        )
         last_save_at = now
         print(
-            f"checkpoint saved out={out_path} done={done}/{len(seeds)} "
+            f"checkpoint saved out={meta_json_path} done={done}/{len(seeds)} "
             f"scanned={payload['stats']['scanned']} solved={payload['stats']['solved']}"
         )
 
@@ -343,8 +445,21 @@ def main() -> None:
     )
     rows.sort(key=lambda r: r.seed)
 
+    merged_rows = merge_rows(existing_rows, rows)
+    solved_buckets, _ = bucket_solved_rows(merged_rows)
+    buckets = dict(solved_buckets)
+    buckets["unknown"] = [row for row in merged_rows if row.status == "unknown"]
+
     payload = _build_payload(args, existing_rows, rows, started, in_progress=False)
-    _write_json_atomic(out_path, payload)
+    payload["files"] = {
+        "rows_csv": str(rows_csv_path),
+    }
+    _write_json_atomic(meta_json_path, payload)
+    _write_csv_atomic(
+        rows_csv_path,
+        fieldnames=["seed", "status", "score", "bucket", "band", "reason", "elapsed_ms", "expanded_nodes", "unique_states"],
+        rows=_build_rows_csv_rows(merged_rows, buckets),
+    )
     stats = payload["stats"]
     quantiles = payload["quantiles"]
 
@@ -356,7 +471,7 @@ def main() -> None:
                 f.write(json.dumps(row.to_dict(), ensure_ascii=False) + "\n")
 
     print(
-        f"done out={out_path} scanned={stats['scanned']} solved={stats['solved']} "
+        f"done out={meta_json_path} scanned={stats['scanned']} solved={stats['solved']} "
         f"unknown={stats['unknown']} proven_unsolvable={stats['proven_unsolvable']} "
         f"q33={quantiles['q33']} q66={quantiles['q66']} "
         f"merged_existing={len(existing_rows)} incoming={len(rows)}"

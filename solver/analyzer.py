@@ -935,9 +935,9 @@ def _count_legal_actions(state: SolverState) -> int:
 
 
 def _difficulty_band(score: float) -> str:
-    if score < 34.0:
+    if score < 80_000.0:
         return "Easy"
-    if score < 67.0:
+    if score < 220_000.0:
         return "Medium"
     return "Hard"
 
@@ -996,26 +996,27 @@ def analyze_state(
 
         dead_ratio = solved.dead_end_nodes / max(1, solved.expanded_nodes)
         choice_pressure = 1.0 / max(1.0, avg_legal)
-        suit_norm = (max(1, suits or 1) - 1) / 3.0
-        expansion_norm = min(1.0, math.log1p(solved.expanded_nodes) / math.log1p(max(2_000, limits.max_nodes)))
-        depth_norm = min(1.0, len(solved.solution) / 180.0)
-        pressure_norm = min(1.0, choice_pressure * 10.0)
-        forced_norm = min(1.0, forced_ratio * 2.0)
-        dead_norm = min(1.0, dead_ratio * 8.0)
-        branch_norm = min(1.0, solved.avg_branching / 35.0)
-        deal_norm = min(1.0, solved.solution_deals / 5.0)
+        suit_factor = max(1, suits or 1) - 1
+        expanded_nodes = float(solved.expanded_nodes)
+        solution_len = float(len(solved.solution))
+        forced_pct = forced_ratio * 100.0
+        dead_pct = dead_ratio * 100.0
+        pressure_pct = choice_pressure * 100.0
+        branching = float(solved.avg_branching)
+        deal_count = float(solved.solution_deals)
 
-        score = 100.0 * (
-            0.22 * expansion_norm
-            + 0.22 * depth_norm
-            + 0.14 * pressure_norm
-            + 0.14 * forced_norm
-            + 0.10 * dead_norm
-            + 0.08 * branch_norm
-            + 0.06 * deal_norm
-            + 0.04 * suit_norm
+        # Keep score as a large raw value; downstream bucketing uses quantiles.
+        score = (
+            expanded_nodes
+            + 420.0 * solution_len
+            + 9_000.0 * deal_count
+            + 1_600.0 * branching
+            + 2_600.0 * forced_pct
+            + 1_800.0 * dead_pct
+            + 1_200.0 * pressure_pct
+            + 15_000.0 * suit_factor
         )
-        score = max(0.0, min(100.0, score))
+        score = max(0.0, score)
         band = _difficulty_band(score)
 
         metrics.update(
@@ -1028,14 +1029,14 @@ def analyze_state(
                 "forced_ratio": round(forced_ratio, 4),
                 "dead_end_ratio": round(dead_ratio, 4),
                 "difficulty_components": {
-                    "expansion_norm": round(expansion_norm, 4),
-                    "depth_norm": round(depth_norm, 4),
-                    "pressure_norm": round(pressure_norm, 4),
-                    "forced_norm": round(forced_norm, 4),
-                    "dead_norm": round(dead_norm, 4),
-                    "branch_norm": round(branch_norm, 4),
-                    "deal_norm": round(deal_norm, 4),
-                    "suit_norm": round(suit_norm, 4),
+                    "expanded_nodes": round(expanded_nodes, 3),
+                    "solution_len": round(solution_len, 3),
+                    "deal_count": round(deal_count, 3),
+                    "avg_branching": round(branching, 4),
+                    "forced_pct": round(forced_pct, 4),
+                    "dead_pct": round(dead_pct, 4),
+                    "pressure_pct": round(pressure_pct, 4),
+                    "suit_factor": round(suit_factor, 4),
                 },
             }
         )
