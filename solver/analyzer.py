@@ -138,6 +138,7 @@ class _Transition:
     freed: int
     priority: int
     macro_steps: int = 0
+    macro_actions: tuple[Action, ...] = ()
     state_key: Optional[StateKey] = None
 
 
@@ -601,14 +602,15 @@ def _apply_macro_chain(
     state: SolverState,
     policy: SearchPolicy,
     seed_action: Optional[Action],
-) -> tuple[SolverState, int, int]:
+) -> tuple[SolverState, int, int, tuple[Action, ...]]:
     if not policy.macro_chain_enabled or policy.macro_max_steps <= 0:
-        return state, 0, 0
+        return state, 0, 0, ()
 
     cur = state
     last_action = seed_action
     freed_total = 0
     steps = 0
+    actions: list[Action] = []
     local_seen = {_canonical_state_key(cur)}
 
     while steps < policy.macro_max_steps:
@@ -622,9 +624,10 @@ def _apply_macro_chain(
         cur = tr.state
         freed_total += tr.freed
         steps += 1
+        actions.append(tr.action)
         last_action = tr.action
 
-    return cur, freed_total, steps
+    return cur, freed_total, steps, tuple(actions)
 
 
 def _iter_transitions(
@@ -656,7 +659,7 @@ def _iter_transitions(
                         continue
                     used_empty_dest = True
                 tr = _apply_move(state, s_idx, idx, d_idx)
-                macro_state, macro_freed, macro_steps = _apply_macro_chain(tr.state, policy, tr.action)
+                macro_state, macro_freed, macro_steps, macro_actions = _apply_macro_chain(tr.state, policy, tr.action)
                 if macro_steps > 0:
                     tr = _Transition(
                         action=tr.action,
@@ -665,6 +668,7 @@ def _iter_transitions(
                         freed=tr.freed + macro_freed,
                         priority=tr.priority + macro_steps * 18 + macro_freed * 80,
                         macro_steps=macro_steps,
+                        macro_actions=macro_actions,
                     )
                 key = _canonical_state_key(tr.state)
                 tr = _Transition(
@@ -674,6 +678,7 @@ def _iter_transitions(
                     freed=tr.freed,
                     priority=tr.priority,
                     macro_steps=tr.macro_steps,
+                    macro_actions=tr.macro_actions,
                     state_key=key,
                 )
                 prev = best_by_key.get(key)
@@ -687,7 +692,9 @@ def _iter_transitions(
     if allow_deal:
         deal_transition = _apply_deal(state)
         if deal_transition is not None:
-            macro_state, macro_freed, macro_steps = _apply_macro_chain(deal_transition.state, policy, deal_transition.action)
+            macro_state, macro_freed, macro_steps, macro_actions = _apply_macro_chain(
+                deal_transition.state, policy, deal_transition.action
+            )
             if macro_steps > 0:
                 deal_transition = _Transition(
                     action=deal_transition.action,
@@ -696,6 +703,7 @@ def _iter_transitions(
                     freed=deal_transition.freed + macro_freed,
                     priority=deal_transition.priority + macro_steps * 18 + macro_freed * 80,
                     macro_steps=macro_steps,
+                    macro_actions=macro_actions,
                 )
             key = _canonical_state_key(deal_transition.state)
             deal_transition = _Transition(
@@ -705,6 +713,7 @@ def _iter_transitions(
                 freed=deal_transition.freed,
                 priority=deal_transition.priority,
                 macro_steps=deal_transition.macro_steps,
+                macro_actions=deal_transition.macro_actions,
                 state_key=key,
             )
             prev = best_by_key.get(key)
@@ -847,26 +856,31 @@ def _reconstruct(
     goal: SolverState,
     parent: dict[SolverState, tuple[Optional[SolverState], Optional[_Transition]]],
 ) -> tuple[tuple[Action, ...], tuple[SolverState, ...], int, int, int]:
-    actions: list[Action] = []
+    segments: list[tuple[Action, ...]] = []
     states: list[SolverState] = [goal]
     revealed = 0
     freed = 0
-    deals = 0
 
     cur = goal
     while True:
         prev, tr = parent[cur]
         if prev is None or tr is None:
             break
-        actions.append(tr.action)
+        segment = (tr.action,) + tr.macro_actions
+        segments.append(segment)
         states.append(prev)
         revealed += tr.revealed
         freed += tr.freed
-        if tr.action.kind == "DEAL":
-            deals += 1
         cur = prev
 
-    actions.reverse()
+    segments.reverse()
+    actions: list[Action] = []
+    deals = 0
+    for segment in segments:
+        actions.extend(segment)
+        for action in segment:
+            if action.kind == "DEAL":
+                deals += 1
     states.reverse()
     return tuple(actions), tuple(states), revealed, freed, deals
 

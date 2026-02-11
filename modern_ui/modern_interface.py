@@ -1,5 +1,6 @@
 import math
 import random
+import threading
 import time
 from datetime import date
 from pathlib import Path
@@ -14,6 +15,7 @@ from modern_ui.game_store import SLOT_COUNT, has_saved_game, list_slot_status, l
 from modern_ui.seed_pool_store import choose_seed_for_bucket
 from modern_ui.settings_store import load_settings, save_settings
 from modern_ui.stats_store import load_stats, profile_key, record_game_lost, record_game_started, record_game_won, save_stats
+from solver.analyzer import SearchLimits, SolverState, solve_state
 from modern_ui.ui_config import (
     ANIM_DURATION,
     CARD_HEIGHT_RATIO,
@@ -149,6 +151,11 @@ class ModernTkInterface(Interface):
         self.rotated_sprite_cache = {}
         self.needs_redraw = True
         self.cached_card_px = None
+        self.solver_plan = []
+        self.solver_mode = None
+        self.solver_running = False
+        self.solver_result = None
+        self.solver_request_id = 0
         self.load_persisted_settings()
 
     def run(self):
@@ -255,6 +262,13 @@ class ModernTkInterface(Interface):
     def request_redraw(self):
         self.needs_redraw = True
 
+    def invalidate_solver_jobs(self):
+        self.solver_request_id += 1
+        self.solver_running = False
+        self.solver_result = None
+        self.solver_plan = []
+        self.solver_mode = None
+
     def fs(self, base):
         factor = FONT_SCALE_FACTOR[self.font_scale]
         return max(8, int(base * factor))
@@ -303,6 +317,7 @@ class ModernTkInterface(Interface):
         return int(seed)
 
     def open_menu(self):
+        self.invalidate_solver_jobs()
         self.stage = MENU
         self.drag = None
         self.anim_cards.clear()
@@ -397,6 +412,7 @@ class ModernTkInterface(Interface):
         return cfg
 
     def start_new_game(self, daily=False):
+        self.invalidate_solver_jobs()
         if self.stage == GAME:
             self.mark_game_lost_if_needed()
         core = Core()
@@ -431,6 +447,7 @@ class ModernTkInterface(Interface):
         self.request_redraw()
 
     def start_seeded_game(self, seed: int):
+        self.invalidate_solver_jobs()
         if self.stage == GAME:
             self.mark_game_lost_if_needed()
         core = Core()
@@ -528,6 +545,7 @@ class ModernTkInterface(Interface):
         self.request_redraw()
 
     def continue_game(self):
+        self.invalidate_solver_jobs()
         core = load_game(self.save_slot)
         if core is None:
             self.can_continue = False
@@ -586,6 +604,7 @@ class ModernTkInterface(Interface):
         return [stack0, stack1, stack2, stack3, stack4, stack5, stack6, stack7, stack8, stack9]
 
     def start_test_game(self):
+        self.invalidate_solver_jobs()
         stacks = self.build_test_stacks()
         lines = ["0", "False", encodeStack([])]
         lines.extend(encodeStack(stack) for stack in stacks)
@@ -662,6 +681,140 @@ class ModernTkInterface(Interface):
         super().onUndoEvent(event)
 
     def notifyRedraw(self):
+        self.request_redraw()
+
+    def clear_solver_state(self):
+        self.solver_mode = None
+        self.solver_running = False
+        self.solver_plan = []
+        self.solver_result = None
+
+    def stop_solver(self):
+        self.solver_request_id += 1
+        self.clear_solver_state()
+        self.message = "已停止求解器。"
+        self.request_redraw()
+
+    def _build_solver_state_from_core(self):
+        if self.core is None:
+            return None
+        stacks = []
+        hidden_prefix = []
+        for stack in self.core.stacks:
+            stacks.append(tuple(card.id for card in stack))
+            hp = 0
+            for card in stack:
+                if card.hidden:
+                    hp += 1
+                else:
+                    break
+            hidden_prefix.append(hp)
+        return SolverState(
+            base=tuple(card.id for card in self.core.base),
+            stacks=tuple(stacks),
+            hidden_prefix=tuple(hidden_prefix),
+            finished_count=int(self.core.finishedCount),
+        )
+
+    def _start_solver_job(self, mode: str):
+        if self.stage != GAME or self.core is None or self.vm is None:
+            self.message = "当前不在对局中，无法求解。"
+            self.request_redraw()
+            return
+        if self.drag is not None:
+            self.message = "拖动中无法启动求解，请先释放卡牌。"
+            self.request_redraw()
+            return
+        if self.solver_running:
+            self.message = "求解器正在运行中..."
+            self.request_redraw()
+            return
+
+        state = self._build_solver_state_from_core()
+        if state is None:
+            self.message = "无法读取当前局面。"
+            self.request_redraw()
+            return
+
+        self.solver_mode = mode
+        self.solver_running = True
+        self.solver_result = None
+        self.solver_plan = []
+        self.solver_request_id += 1
+        request_id = self.solver_request_id
+
+        self.message = "求解器运行中..."
+        self.request_redraw()
+
+        def worker():
+            limits = SearchLimits(
+                max_nodes=2_000_000 if mode == "auto" else 140_000,
+                max_seconds=20.0 if mode == "auto" else 1.8,
+                max_frontier=1_000_000 if mode == "auto" else 500_000,
+            )
+            result = solve_state(state, limits=limits)
+            self.solver_result = (request_id, result)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_solver_result_if_ready(self):
+        if self.solver_result is None:
+            return
+        payload = self.solver_result
+        self.solver_result = None
+        request_id, result = payload
+        if request_id != self.solver_request_id:
+            return
+
+        self.solver_running = False
+        if result.status != "solved":
+            self.solver_mode = None
+            self.solver_plan = []
+            if result.status == "proven_unsolvable":
+                self.message = "求解完成：该局面无解。"
+            else:
+                self.message = "求解未找到可行解（达到搜索限制）。"
+            self.request_redraw()
+            return
+
+        self.solver_plan = list(result.solution)
+        if not self.solver_plan:
+            self.solver_mode = None
+            self.message = "当前局面已是终局。"
+            self.request_redraw()
+            return
+
+        if self.solver_mode == "demo":
+            self._play_one_solver_action()
+        else:
+            self.message = f"求解完成，准备自动执行 {len(self.solver_plan)} 步。"
+            self.request_redraw()
+
+    def _play_one_solver_action(self):
+        if not self.solver_plan:
+            self.solver_mode = None
+            self.message = "演示完成。"
+            self.request_redraw()
+            return
+        action = self.solver_plan.pop(0)
+        ok = False
+        if action.kind == "DEAL":
+            ok = self.core.askDeal()
+            if not ok:
+                self.message = "演示中断：当前不能发牌。"
+        elif action.kind == "MOVE":
+            ok = self.core.askMove((action.src_stack, action.src_idx), action.dest_stack)
+            if not ok:
+                self.message = "演示中断：动作与当前局面不一致。"
+        if not ok:
+            self.solver_mode = None
+            self.solver_plan = []
+            self.request_redraw()
+            return
+        self.current_game_actions += 1
+        if self.solver_mode == "demo":
+            self.solver_mode = None
+            self.message = "已演示一步。"
         self.request_redraw()
 
     def on_resize(self, event):
@@ -778,6 +931,12 @@ class ModernTkInterface(Interface):
                 self.open_settings()
             elif key == "h":
                 self.message = self.build_hint_message()
+            elif key == "a":
+                self._start_solver_job("auto")
+            elif key == "v":
+                self._start_solver_job("demo")
+            elif key == "x":
+                self.stop_solver()
             elif key == "p":
                 self.open_stats()
             self.request_redraw()
@@ -955,6 +1114,7 @@ class ModernTkInterface(Interface):
                 return
 
     def tick(self):
+        self._apply_solver_result_if_ready()
         self.consume_animation_queue()
         self.update_effects()
         if self.stage == GAME and self.vm and self.vm.game_ended and self.victory_anim_active:
@@ -978,6 +1138,21 @@ class ModernTkInterface(Interface):
             or self.victory_cards
             or self.victory_anim_active
         )
+        can_auto_step = (
+            self.solver_mode == "auto"
+            and not self.solver_running
+            and not self.anim_cards
+            and not self.victory_anim_active
+            and self.drag is None
+            and self.stage == GAME
+        )
+        if can_auto_step:
+            if self.solver_plan:
+                self._play_one_solver_action()
+            else:
+                self.solver_mode = None
+                self.message = "自动求解演示完成。"
+                self.request_redraw()
         if self.needs_redraw or has_active_fx:
             self.draw()
             self.needs_redraw = False

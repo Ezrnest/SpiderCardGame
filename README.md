@@ -36,6 +36,9 @@ implementation of two kinds of interfaces.
   - `D`: deal cards
   - `U`: undo
   - `R`: redo
+  - `V`: solver demo one step (search + execute one move)
+  - `A`: solver auto-play (search then auto execute plan)
+  - `X`: stop solver demo / auto-play
   - `S`: open settings page
   - `M`: back to menu
   - `H`: Hint+ (top candidate moves with risk notes)
