@@ -1,5 +1,6 @@
 {
-  "generated_at": "2026-02-11T05:42:04.338112+00:00",
+  "generated_at": "2026-02-11T05:47:19.837326+00:00",
+  "in_progress": false,
   "suits": 4,
   "search": {
     "max_seconds": 10.0,
@@ -9,21 +10,21 @@
     "workers": 8
   },
   "source": {
-    "start_seed": 20260210,
-    "count": 500,
+    "start_seed": 1,
+    "count": 10,
     "merge_mode": "merge",
-    "existing_rows_loaded": 0,
-    "incoming_rows": 500
+    "existing_rows_loaded": 500,
+    "incoming_rows": 10
   },
   "stats": {
-    "scanned": 500,
-    "solved": 110,
-    "unknown": 390,
+    "scanned": 510,
+    "solved": 112,
+    "unknown": 398,
     "proven_unsolvable": 0
   },
   "quantiles": {
-    "q33": 36.206667,
-    "q66": 40.478
+    "q33": 36.366,
+    "q66": 40.798
   },
   "buckets": {
     "Easy": [
@@ -63,10 +64,10 @@
       20260708,
       20260462,
       20260377,
-      20260549
+      20260549,
+      20260482
     ],
     "Medium": [
-      20260482,
       20260650,
       20260241,
       20260661,
@@ -101,11 +102,11 @@
       20260547,
       20260707,
       20260338,
-      20260507
+      20260507,
+      20260545,
+      20260427
     ],
     "Hard": [
-      20260545,
-      20260427,
       20260406,
       20260333,
       20260534,
@@ -116,9 +117,11 @@
       20260559,
       20260295,
       20260658,
+      7,
       20260318,
       20260224,
       20260484,
+      3,
       20260496,
       20260596,
       20260555,
@@ -514,9 +517,7 @@
         "elapsed_ms": 688.786,
         "expanded_nodes": 789,
         "unique_states": 2336
-      }
-    ],
-    "Medium": [
+      },
       {
         "seed": 20260482,
         "status": "solved",
@@ -526,7 +527,9 @@
         "elapsed_ms": 2639.01,
         "expanded_nodes": 2848,
         "unique_states": 8382
-      },
+      }
+    ],
+    "Medium": [
       {
         "seed": 20260650,
         "status": "solved",
@@ -876,9 +879,7 @@
         "elapsed_ms": 2561.372,
         "expanded_nodes": 2487,
         "unique_states": 5147
-      }
-    ],
-    "Hard": [
+      },
       {
         "seed": 20260545,
         "status": "solved",
@@ -898,7 +899,9 @@
         "elapsed_ms": 1911.175,
         "expanded_nodes": 2622,
         "unique_states": 8887
-      },
+      }
+    ],
+    "Hard": [
       {
         "seed": 20260406,
         "status": "solved",
@@ -1000,6 +1003,16 @@
         "unique_states": 3993
       },
       {
+        "seed": 7,
+        "status": "solved",
+        "score": 42.652,
+        "band": "Medium",
+        "reason": null,
+        "elapsed_ms": 1672.56,
+        "expanded_nodes": 1900,
+        "unique_states": 5092
+      },
+      {
         "seed": 20260318,
         "status": "solved",
         "score": 42.664,
@@ -1028,6 +1041,16 @@
         "elapsed_ms": 1357.393,
         "expanded_nodes": 2558,
         "unique_states": 7964
+      },
+      {
+        "seed": 3,
+        "status": "solved",
+        "score": 42.917,
+        "band": "Medium",
+        "reason": null,
+        "elapsed_ms": 1016.366,
+        "expanded_nodes": 1567,
+        "unique_states": 3834
       },
       {
         "seed": 20260496,
@@ -1252,6 +1275,106 @@
     ]
   },
   "all_rows": [
+    {
+      "seed": 1,
+      "status": "unknown",
+      "score": null,
+      "band": null,
+      "reason": "limits_reached",
+      "elapsed_ms": 7578.636,
+      "expanded_nodes": 26705,
+      "unique_states": 86121
+    },
+    {
+      "seed": 2,
+      "status": "unknown",
+      "score": null,
+      "band": null,
+      "reason": "limits_reached",
+      "elapsed_ms": 10037.628,
+      "expanded_nodes": 21570,
+      "unique_states": 140936
+    },
+    {
+      "seed": 3,
+      "status": "solved",
+      "score": 42.917,
+      "band": "Medium",
+      "reason": null,
+      "elapsed_ms": 1016.366,
+      "expanded_nodes": 1567,
+      "unique_states": 3834
+    },
+    {
+      "seed": 4,
+      "status": "unknown",
+      "score": null,
+      "band": null,
+      "reason": "limits_reached",
+      "elapsed_ms": 10000.807,
+      "expanded_nodes": 32145,
+      "unique_states": 110234
+    },
+    {
+      "seed": 5,
+      "status": "unknown",
+      "score": null,
+      "band": null,
+      "reason": "limits_reached",
+      "elapsed_ms": 10000.991,
+      "expanded_nodes": 32535,
+      "unique_states": 131277
+    },
+    {
+      "seed": 6,
+      "status": "unknown",
+      "score": null,
+      "band": null,
+      "reason": "limits_reached",
+      "elapsed_ms": 10001.166,
+      "expanded_nodes": 36301,
+      "unique_states": 106601
+    },
+    {
+      "seed": 7,
+      "status": "solved",
+      "score": 42.652,
+      "band": "Medium",
+      "reason": null,
+      "elapsed_ms": 1672.56,
+      "expanded_nodes": 1900,
+      "unique_states": 5092
+    },
+    {
+      "seed": 8,
+      "status": "unknown",
+      "score": null,
+      "band": null,
+      "reason": "limits_reached",
+      "elapsed_ms": 10002.983,
+      "expanded_nodes": 9861,
+      "unique_states": 171110
+    },
+    {
+      "seed": 9,
+      "status": "unknown",
+      "score": null,
+      "band": null,
+      "reason": "limits_reached",
+      "elapsed_ms": 3535.295,
+      "expanded_nodes": 11341,
+      "unique_states": 162074
+    },
+    {
+      "seed": 10,
+      "status": "unknown",
+      "score": null,
+      "band": null,
+      "reason": "limits_reached",
+      "elapsed_ms": 10001.623,
+      "expanded_nodes": 20040,
+      "unique_states": 174765
+    },
     {
       "seed": 20260210,
       "status": "unknown",
@@ -6253,5 +6376,5 @@
       "unique_states": 73905
     }
   ],
-  "build_elapsed_ms": 488962.014
+  "build_elapsed_ms": 11892.159
 }

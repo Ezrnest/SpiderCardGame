@@ -1116,7 +1116,7 @@ def analyze_seeds(
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Analyze Spider seed solvability and difficulty.")
     parser.add_argument("--seed", type=int, action="append", required=True, help="Seed to analyze; can be repeated.")
-    parser.add_argument("--suits", type=int, choices=(1, 2, 4), default=4, help="Suit count.")
+    parser.add_argument("--suits", type=int, choices=(1, 2, 3, 4), default=4, help="Suit count.")
     parser.add_argument("--max-nodes", type=int, default=200_000, help="Search node limit.")
     parser.add_argument("--max-seconds", type=float, default=2.0, help="Search time limit in seconds.")
     parser.add_argument("--max-frontier", type=int, default=500_000, help="Search frontier size limit.")

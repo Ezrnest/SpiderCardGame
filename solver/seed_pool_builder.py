@@ -79,7 +79,7 @@ def _quantile(values: list[float], q: float) -> float:
     return values[lo] * (1.0 - alpha) + values[hi] * alpha
 
 
-def bucket_solved_rows(rows: Iterable[SeedRow], max_per_bucket: int = 0) -> tuple[dict[str, list[SeedRow]], dict[str, float]]:
+def bucket_solved_rows(rows: Iterable[SeedRow]) -> tuple[dict[str, list[SeedRow]], dict[str, float]]:
     solved = [row for row in rows if row.status == "solved" and row.score is not None]
     if not solved:
         return {"Easy": [], "Medium": [], "Hard": []}, {"q33": 0.0, "q66": 0.0}
@@ -97,8 +97,6 @@ def bucket_solved_rows(rows: Iterable[SeedRow], max_per_bucket: int = 0) -> tupl
             key = "Medium"
         else:
             key = "Hard"
-        if max_per_bucket > 0 and len(buckets[key]) >= max_per_bucket:
-            continue
         buckets[key].append(row)
 
     return buckets, {"q33": round(q33, 6), "q66": round(q66, 6)}
@@ -195,7 +193,7 @@ def _default_output_path(suits: int) -> Path:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build seed pools by quantile-bucketed difficulty.")
-    parser.add_argument("--suits", type=int, choices=(1, 2, 4), required=True, help="Suit count.")
+    parser.add_argument("--suits", type=int, choices=(1, 2, 3, 4), required=True, help="Suit count.")
     parser.add_argument("--start-seed", type=int, required=True, help="Start seed inclusive.")
     parser.add_argument("--count", type=int, required=True, help="How many seeds to scan.")
     parser.add_argument("--workers", type=int, default=_default_workers(), help="Parallel workers.")
@@ -203,13 +201,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-nodes", type=int, default=1_500_000, help="Per-seed node budget.")
     parser.add_argument("--max-frontier", type=int, default=800_000, help="Per-seed frontier budget.")
     parser.add_argument("--single-stage", action="store_true", help="Disable staged widening search.")
-    parser.add_argument("--max-per-bucket", type=int, default=0, help="Cap seeds per bucket; 0 means unlimited.")
     parser.add_argument("--progress-every", type=int, default=10, help="Print progress every N completed seeds.")
     parser.add_argument("--save-interval-sec", type=float, default=60.0, help="Checkpoint save interval in seconds.")
-    parser.add_argument("--out", type=str, default="", help="Output JSON path.")
+    parser.add_argument(
+        "--out",
+        type=str,
+        default="",
+        help="Output JSON path. Default: modern_ui/seed_pool_{suits}s.json",
+    )
     parser.add_argument("--raw-jsonl", type=str, default="", help="Optional raw per-seed JSONL path.")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite output instead of merging existing json.")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.out:
+        args.out = str(_default_output_path(args.suits))
+    return args
 
 
 def _stats(rows: list[SeedRow]) -> dict:
@@ -260,7 +265,10 @@ def _build_payload(
     in_progress: bool,
 ) -> dict:
     merged_rows = merge_rows(existing_rows, rows)
-    buckets, quantiles = bucket_solved_rows(merged_rows, max_per_bucket=max(0, args.max_per_bucket))
+    solved_buckets, quantiles = bucket_solved_rows(merged_rows)
+    unknown_rows = [row for row in merged_rows if row.status == "unknown"]
+    buckets = dict(solved_buckets)
+    buckets["unknown"] = unknown_rows
     stats = _stats(merged_rows)
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -283,7 +291,6 @@ def _build_payload(
         "stats": stats,
         "quantiles": quantiles,
         "buckets": {key: [row.seed for row in rows_for_bucket] for key, rows_for_bucket in buckets.items()},
-        "bucket_entries": {key: [row.to_dict() for row in rows_for_bucket] for key, rows_for_bucket in buckets.items()},
         "all_rows": [row.to_dict() for row in merged_rows],
         "build_elapsed_ms": round((time.perf_counter() - started) * 1000.0, 3),
     }
@@ -298,7 +305,7 @@ def _write_json_atomic(path: Path, payload: dict) -> None:
 def main() -> None:
     args = parse_args()
     seeds = list(range(args.start_seed, args.start_seed + args.count))
-    out_path = Path(args.out).expanduser() if args.out else _default_output_path(args.suits)
+    out_path = Path(args.out).expanduser()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     existing_rows: list[SeedRow] = []
     if not args.overwrite:

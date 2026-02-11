@@ -10,7 +10,7 @@ from solver.analyzer import SearchLimits, analyze_seed
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Batch seed mining for Spider solver/analyzer.")
-    parser.add_argument("--suits", type=int, choices=(1, 2, 4), required=True, help="Suit count.")
+    parser.add_argument("--suits", type=int, choices=(1, 2, 3, 4), required=True, help="Suit count.")
     parser.add_argument("--start-seed", type=int, required=True, help="Start seed (inclusive).")
     parser.add_argument("--count", type=int, required=True, help="How many seeds to scan.")
     parser.add_argument("--max-seconds", type=float, default=10.0, help="Per-seed solver time limit.")

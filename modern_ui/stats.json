@@ -1,14 +1,14 @@
 {
   "overall": {
-    "games_started": 5,
+    "games_started": 7,
     "games_won": 0,
     "total_duration_sec": 0.0,
     "total_actions": 0,
     "current_streak": 0,
     "best_streak": 0
   },
-  "by_difficulty": {
-    "Easy": {
+  "by_profile": {
+    "1s-Easy": {
       "games_started": 0,
       "games_won": 0,
       "total_duration_sec": 0.0,
@@ -16,7 +16,31 @@
       "current_streak": 0,
       "best_streak": 0
     },
-    "Medium": {
+    "1s-Medium": {
+      "games_started": 0,
+      "games_won": 0,
+      "total_duration_sec": 0.0,
+      "total_actions": 0,
+      "current_streak": 0,
+      "best_streak": 0
+    },
+    "1s-Hard": {
+      "games_started": 1,
+      "games_won": 0,
+      "total_duration_sec": 0.0,
+      "total_actions": 0,
+      "current_streak": 0,
+      "best_streak": 0
+    },
+    "2s-Easy": {
+      "games_started": 0,
+      "games_won": 0,
+      "total_duration_sec": 0.0,
+      "total_actions": 0,
+      "current_streak": 0,
+      "best_streak": 0
+    },
+    "2s-Medium": {
       "games_started": 3,
       "games_won": 0,
       "total_duration_sec": 0.0,
@@ -24,8 +48,56 @@
       "current_streak": 0,
       "best_streak": 0
     },
-    "Hard": {
-      "games_started": 2,
+    "2s-Hard": {
+      "games_started": 0,
+      "games_won": 0,
+      "total_duration_sec": 0.0,
+      "total_actions": 0,
+      "current_streak": 0,
+      "best_streak": 0
+    },
+    "3s-Easy": {
+      "games_started": 0,
+      "games_won": 0,
+      "total_duration_sec": 0.0,
+      "total_actions": 0,
+      "current_streak": 0,
+      "best_streak": 0
+    },
+    "3s-Medium": {
+      "games_started": 0,
+      "games_won": 0,
+      "total_duration_sec": 0.0,
+      "total_actions": 0,
+      "current_streak": 0,
+      "best_streak": 0
+    },
+    "3s-Hard": {
+      "games_started": 0,
+      "games_won": 0,
+      "total_duration_sec": 0.0,
+      "total_actions": 0,
+      "current_streak": 0,
+      "best_streak": 0
+    },
+    "4s-Easy": {
+      "games_started": 0,
+      "games_won": 0,
+      "total_duration_sec": 0.0,
+      "total_actions": 0,
+      "current_streak": 0,
+      "best_streak": 0
+    },
+    "4s-Medium": {
+      "games_started": 0,
+      "games_won": 0,
+      "total_duration_sec": 0.0,
+      "total_actions": 0,
+      "current_streak": 0,
+      "best_streak": 0
+    },
+    "4s-Hard": {
+      "games_started": 3,
       "games_won": 0,
       "total_duration_sec": 0.0,
       "total_actions": 0,
