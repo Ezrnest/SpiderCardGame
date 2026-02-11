@@ -398,8 +398,23 @@ class Core:
         count = min(len(self.stacks), len(self.base))
         if count > 0:
             self.doDeal(count, True)
+            self.autoResolveFrees(True)
+            self.checkWin()
             return True
         return False
+
+    def autoResolveFrees(self, doLog=True):
+        changed = True
+        while changed:
+            changed = False
+            for idx in range(len(self.stacks)):
+                if len(self.stacks[idx]) < Card.NUM_PER_SUIT:
+                    continue
+                suit = self.doFree(idx, doLog)
+                if suit == -1:
+                    continue
+                changed = True
+                self.doReveal(idx, doLog)
 
     def askUndo(self):
         return self.history.undo()
@@ -430,6 +445,8 @@ class Core:
     def doFree(self, dest: int, doLog=True):
         stack = self.stacks[dest]
         length = len(stack)
+        if length < Card.NUM_PER_SUIT:
+            return -1
         suit = stack[length - 1].suit
         for i in range(Card.NUM_PER_SUIT):
             card = stack[length - i - 1]

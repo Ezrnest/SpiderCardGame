@@ -33,6 +33,12 @@ def visible(suit, num):
     return c
 
 
+def hidden(suit, num):
+    c = Card.fromSuitAndNum(suit, num)
+    c.hidden = True
+    return c
+
+
 class CoreTestCase(unittest.TestCase):
     def make_running_core(self):
         core = Core()
@@ -87,6 +93,23 @@ class CoreTestCase(unittest.TestCase):
         self.assertEqual(before_total, sum(len(s) for s in core.stacks))
         self.assertTrue(core.askRedo())
         self.assertEqual(before_base - 10, len(core.base))
+
+    def test_ask_deal_auto_resolves_completed_suit(self):
+        stack0 = [visible(0, num) for num in range(12, 0, -1)]  # K..2
+        stacks = [stack0] + [[visible(1, 9)] for _ in range(9)]
+        base = [hidden(1, 0) for _ in range(9)] + [hidden(0, 0)]  # last pop -> stack0 gets A
+
+        core, _ = self.make_loaded_core(stacks=stacks, base=base)
+        self.assertTrue(core.askDeal())
+
+        self.assertEqual(1, core.finishedCount)
+        self.assertEqual(0, len(core.stacks[0]))
+        self.assertEqual(0, len(core.base))
+
+        self.assertTrue(core.askUndo())
+        self.assertEqual(0, core.finishedCount)
+        self.assertEqual(12, len(core.stacks[0]))
+        self.assertEqual(10, len(core.base))
 
     def test_free_stack_and_undo(self):
         full = []
