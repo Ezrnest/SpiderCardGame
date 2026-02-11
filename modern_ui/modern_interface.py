@@ -3,7 +3,7 @@ import random
 import time
 from datetime import date
 from pathlib import Path
-from tkinter import BOTH, Canvas, Tk, messagebox
+from tkinter import BOTH, Canvas, Tk, messagebox, simpledialog
 
 from base.Core import Card, Core, DUMMY_PLAYER, GameConfig, encodeStack
 from base.Interface import Interface
@@ -392,6 +392,62 @@ class ModernTkInterface(Interface):
         self.save_current_game()
         self.request_redraw()
 
+    def start_seeded_game(self, seed: int):
+        if self.stage == GAME:
+            self.mark_game_lost_if_needed()
+        core = Core()
+        core.registerInterface(self)
+        core.registerPlayer(DUMMY_PLAYER)
+        cfg = GameConfig()
+        cfg.suits = self.suit_count
+        cfg.seed = int(seed)
+        core.startGame(cfg)
+        self.vm = CoreAdapter.snapshot(core)
+        self.test_mode = False
+        self.daily_mode = False
+        self.current_seed = int(seed)
+        self.seed_source = "manual"
+
+        self.stage = GAME
+        self.drag = None
+        self.hover_drop_stack = None
+        self.hover_drop_valid = False
+        self.pending_move_anim = None
+
+        self.anim_queue.clear()
+        self.anim_cards.clear()
+        self.particles.clear()
+        self.collect_cards.clear()
+        self.reset_victory_state()
+
+        self.message = (
+            f"Seed game started ({self.current_profile_label()}, manual seed {self.current_seed}). "
+            "Drag cards to move. Press G to restart same seed."
+        )
+        self.begin_game_tracking()
+        self.save_current_game()
+        self.request_redraw()
+
+    def prompt_and_start_seeded_game(self):
+        if self.root is None:
+            return
+        raw = simpledialog.askstring("Seeded Game", "Enter an integer seed:", parent=self.root)
+        if raw is None:
+            return
+        value = raw.strip()
+        if not value:
+            self.message = "Seed input canceled."
+            self.request_redraw()
+            return
+        try:
+            seed = int(value)
+        except ValueError:
+            messagebox.showerror("Invalid Seed", "Seed must be an integer.")
+            self.message = "Invalid seed input."
+            self.request_redraw()
+            return
+        self.start_seeded_game(seed)
+
     def restart_same_seed_game(self):
         if self.stage != GAME:
             return
@@ -593,6 +649,10 @@ class ModernTkInterface(Interface):
                 if not self.confirm_overwrite_saved_game("a new game"):
                     return
                 self.start_new_game(daily=False)
+            elif key == "i":
+                if not self.confirm_overwrite_saved_game("a seeded game"):
+                    return
+                self.prompt_and_start_seeded_game()
             elif key == "t":
                 self.start_test_game()
             elif key == "c":
@@ -820,6 +880,10 @@ class ModernTkInterface(Interface):
                     if not self.confirm_overwrite_saved_game("a new game"):
                         return
                     self.start_new_game(daily=False)
+                elif action == "seed":
+                    if not self.confirm_overwrite_saved_game("a seeded game"):
+                        return
+                    self.prompt_and_start_seeded_game()
                 elif action == "continue":
                     self.continue_game()
                 elif action == "daily":
@@ -1145,23 +1209,22 @@ class ModernTkInterface(Interface):
             font=f"Helvetica {self.fs(16)}",
         )
 
-        bw = min(420, int(self.width * 0.42))
         bh = 58
+        row_gap = 18
+        col_gap = 18
         start_y = int(self.height * 0.42)
-        gap = 18
-        button_defs = [
-            ("Start New Game", "new", "#0f766e"),
-            ("Continue Game", "continue", "#0d9488"),
-            ("Daily Challenge", "daily", "#1d4ed8"),
-            (f"Save Slot: {self.save_slot}", "save_slot", "#334155"),
-            ("Statistics", "stats", "#0ea5e9"),
-            ("Game Settings", "settings", "#7c3aed"),
-        ]
+        margin = 36
+        usable_w = max(320, self.width - margin * 2)
+        col_w3 = max(160, (usable_w - col_gap * 2) / 3)
+        col_w2 = max(200, (usable_w - col_gap) / 2)
+        row_top = start_y
+        row_mid = row_top + bh + row_gap
+        row_bot = row_mid + bh + row_gap
+        row_x3 = (self.width - (col_w3 * 3 + col_gap * 2)) / 2
+        row_x2 = (self.width - (col_w2 * 2 + col_gap)) / 2
 
-        for i, (label, action, fill) in enumerate(button_defs):
-            x1 = (self.width - bw) / 2
-            y1 = start_y + i * (bh + gap)
-            x2 = x1 + bw
+        def draw_button(label, action, fill, x1, y1, w):
+            x2 = x1 + w
             y2 = y1 + bh
             enabled = not (action == "continue" and not self.can_continue)
             self.active_buttons.append({"action": action, "rect": (x1, y1, x2, y2), "enabled": enabled})
@@ -1170,6 +1233,19 @@ class ModernTkInterface(Interface):
             c.create_rectangle(x1, y1, x2, y2, fill=button_fill, outline="#f8fafc", width=2)
             c.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=label, fill=text_fill, font=f"Helvetica {self.fs(16)} bold")
 
+        # Row 1: quick start actions.
+        draw_button("Start New Game", "new", "#0f766e", row_x3, row_top, col_w3)
+        draw_button("Start Seeded Game", "seed", "#1f2937", row_x3 + col_w3 + col_gap, row_top, col_w3)
+        draw_button("Daily Challenge", "daily", "#1d4ed8", row_x3 + (col_w3 + col_gap) * 2, row_top, col_w3)
+
+        # Row 2: save/continue actions.
+        draw_button("Continue Game", "continue", "#0d9488", row_x2, row_mid, col_w2)
+        draw_button(f"Save Slot: {self.save_slot}", "save_slot", "#334155", row_x2 + col_w2 + col_gap, row_mid, col_w2)
+
+        # Row 3: information/settings actions.
+        draw_button("Statistics", "stats", "#0ea5e9", row_x2, row_bot, col_w2)
+        draw_button("Game Settings", "settings", "#7c3aed", row_x2 + col_w2 + col_gap, row_bot, col_w2)
+
         slot_lines = []
         for row in self.slot_status:
             state = "Saved" if row["exists"] else "Empty"
@@ -1177,7 +1253,7 @@ class ModernTkInterface(Interface):
             slot_lines.append(f"Slot {row['slot']}: {state}{marker}")
         c.create_text(
             self.width * 0.5,
-            start_y - self.fs(30),
+            row_top - self.fs(30),
             text=" | ".join(slot_lines),
             fill=theme["hud_subtext"],
             font=f"Helvetica {self.fs(12)}",
@@ -1186,7 +1262,7 @@ class ModernTkInterface(Interface):
         c.create_text(
             self.width * 0.5,
             self.height - 34,
-            text="Keys: N new game, C continue, D daily, L slot, P stats, S settings",
+            text="Keys: N new game, I seeded game, C continue, D daily, L slot, P stats, S settings",
             fill=theme["hud_subtext"],
             font=f"Helvetica {self.fs(13)}",
         )

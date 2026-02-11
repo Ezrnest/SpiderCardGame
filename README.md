@@ -30,6 +30,7 @@ implementation of two kinds of interfaces.
   - Mouse drag-and-drop: press on a valid sequence, drag, release on destination stack.
   - Click the deck (top-right card pile) to deal.
   - `N`: start a normal new game
+  - `I`: input a seed and start a seeded game
   - `G`: restart current game with the same seed (when seed is available)
   - `C`: continue saved game (from menu)
   - `D`: deal cards
