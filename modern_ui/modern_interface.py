@@ -90,6 +90,7 @@ class ModernTkInterface(Interface):
         "Huge": "特大",
     }
     SHOW_TOP_LEFT_DETAIL = False
+    AUTO_SOLVER_STEP_INTERVAL = 0.45
 
     def __init__(self, width=1200, height=760):
         super().__init__()
@@ -156,6 +157,7 @@ class ModernTkInterface(Interface):
         self.solver_running = False
         self.solver_result = None
         self.solver_request_id = 0
+        self.solver_next_step_at = 0.0
         self.load_persisted_settings()
 
     def run(self):
@@ -268,6 +270,7 @@ class ModernTkInterface(Interface):
         self.solver_result = None
         self.solver_plan = []
         self.solver_mode = None
+        self.solver_next_step_at = 0.0
 
     def fs(self, base):
         factor = FONT_SCALE_FACTOR[self.font_scale]
@@ -688,6 +691,7 @@ class ModernTkInterface(Interface):
         self.solver_running = False
         self.solver_plan = []
         self.solver_result = None
+        self.solver_next_step_at = 0.0
 
     def stop_solver(self):
         self.solver_request_id += 1
@@ -788,6 +792,7 @@ class ModernTkInterface(Interface):
             self._play_one_solver_action()
         else:
             self.message = f"求解完成，准备自动执行 {len(self.solver_plan)} 步。"
+            self.solver_next_step_at = time.time() + self.AUTO_SOLVER_STEP_INTERVAL
             self.request_redraw()
 
     def _play_one_solver_action(self):
@@ -815,6 +820,8 @@ class ModernTkInterface(Interface):
         if self.solver_mode == "demo":
             self.solver_mode = None
             self.message = "已演示一步。"
+        elif self.solver_mode == "auto":
+            self.solver_next_step_at = time.time() + self.AUTO_SOLVER_STEP_INTERVAL
         self.request_redraw()
 
     def on_resize(self, event):
@@ -1145,6 +1152,7 @@ class ModernTkInterface(Interface):
             and not self.victory_anim_active
             and self.drag is None
             and self.stage == GAME
+            and time.time() >= self.solver_next_step_at
         )
         if can_auto_step:
             if self.solver_plan:
