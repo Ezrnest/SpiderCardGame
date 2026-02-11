@@ -11,7 +11,7 @@ from base.Interface import Interface
 from modern_ui.adapter import CoreAdapter
 from modern_ui.card_face import CardFaceRenderer
 from modern_ui.entities import CollectCard, DragState, MovingCard, Particle, VictoryCard
-from modern_ui.game_store import SLOT_COUNT, has_saved_game, list_slot_status, load_game, save_game
+from modern_ui.game_store import SLOT_COUNT, clear_game, has_saved_game, list_slot_status, load_game, save_game
 from modern_ui.seed_pool_store import choose_seed_for_bucket
 from modern_ui.settings_store import load_settings, save_settings
 from modern_ui.stats_store import load_stats, profile_key, record_game_lost, record_game_started, record_game_won, save_stats
@@ -661,6 +661,10 @@ class ModernTkInterface(Interface):
         self.victory_panel_visible = False
         self.message = "胜利动画中..."
         self.mark_game_won_if_needed()
+        if not self.test_mode:
+            clear_game(self.save_slot)
+            self.slot_status = list_slot_status()
+            self.can_continue = has_saved_game(self.save_slot)
         self.spawn_firework_burst(self.width * 0.5, self.height * 0.3, 34)
         self.spawn_firework_burst(self.width * 0.35, self.height * 0.26, 28)
         self.spawn_firework_burst(self.width * 0.65, self.height * 0.26, 28)
@@ -760,6 +764,39 @@ class ModernTkInterface(Interface):
             self.solver_result = (request_id, result)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def play_one_heuristic_step(self):
+        if self.stage != GAME or self.core is None or self.vm is None:
+            self.message = "当前不在对局中，无法演示。"
+            self.request_redraw()
+            return
+        if self.drag is not None or self.anim_cards:
+            self.message = "请先结束当前拖动/动画。"
+            self.request_redraw()
+            return
+        if self.victory_anim_active or self.victory_panel_visible:
+            self.message = "结算阶段无法演示。"
+            self.request_redraw()
+            return
+
+        hints = self.build_hint_candidates(limit=1)
+        if hints:
+            best = hints[0]
+            ok = self.core.askMove(best["src"], best["dest"])
+            if ok:
+                self.current_game_actions += 1
+                self.message = "已按启发式演示一步。"
+            else:
+                self.message = "启发式动作执行失败。"
+            self.request_redraw()
+            return
+
+        if self.core.askDeal():
+            self.current_game_actions += 1
+            self.message = "无可移动作，已演示发牌一步。"
+        else:
+            self.message = "当前无可演示动作。"
+        self.request_redraw()
 
     def _apply_solver_result_if_ready(self):
         if self.solver_result is None:
@@ -941,7 +978,7 @@ class ModernTkInterface(Interface):
             elif key == "a":
                 self._start_solver_job("auto")
             elif key == "v":
-                self._start_solver_job("demo")
+                self.play_one_heuristic_step()
             elif key == "x":
                 self.stop_solver()
             elif key == "p":
@@ -1138,13 +1175,6 @@ class ModernTkInterface(Interface):
                 self.message = "胜利结算已就绪。按 N 开新局，或按 M 返回菜单。"
                 self.request_redraw()
 
-        has_active_fx = bool(
-            self.anim_cards
-            or self.particles
-            or self.collect_cards
-            or self.victory_cards
-            or self.victory_anim_active
-        )
         can_auto_step = (
             self.solver_mode == "auto"
             and not self.solver_running
@@ -1154,13 +1184,25 @@ class ModernTkInterface(Interface):
             and self.stage == GAME
             and time.time() >= self.solver_next_step_at
         )
+        did_auto_step = False
         if can_auto_step:
             if self.solver_plan:
                 self._play_one_solver_action()
+                did_auto_step = True
             else:
                 self.solver_mode = None
                 self.message = "自动求解演示完成。"
                 self.request_redraw()
+        if did_auto_step:
+            # Important: consume move events in the same tick to avoid one-frame "teleport" flicker.
+            self.consume_animation_queue()
+        has_active_fx = bool(
+            self.anim_cards
+            or self.particles
+            or self.collect_cards
+            or self.victory_cards
+            or self.victory_anim_active
+        )
         if self.needs_redraw or has_active_fx:
             self.draw()
             self.needs_redraw = False
@@ -1424,7 +1466,7 @@ class ModernTkInterface(Interface):
         c.create_text(
             self.width * 0.5,
             self.height * 0.2 + 52,
-            text="支持自定义视觉风格的蜘蛛纸牌",
+            text="经典的单人纸牌游戏，目标是将所有牌按花色排序收集起来",
             fill=theme["hud_subtext"],
             font=f"Helvetica {self.fs(16)}",
         )
@@ -1500,10 +1542,11 @@ class ModernTkInterface(Interface):
             font=f"Helvetica {self.fs(15)}",
         )
 
-        bw = min(560, int(self.width * 0.54))
+        bw = min(430, int(self.width * 0.34))
         bh = 64
-        start_y = int(self.height * 0.34)
+        start_y = int(self.height * 0.32)
         gap = 20
+        col_gap = 20
         settings_defs = [
             (f"花色数量：{self.suit_count}", "suit_count", "#0f766e"),
             (f"难度分级：{self.BUCKET_TEXT_ZH.get(self.difficulty_bucket, self.difficulty_bucket)}", "difficulty_bucket", "#14532d"),
@@ -1515,8 +1558,15 @@ class ModernTkInterface(Interface):
         ]
 
         for i, (label, action, fill) in enumerate(settings_defs):
-            x1 = (self.width - bw) / 2
-            y1 = start_y + i * (bh + gap)
+            row = i // 2
+            col = i % 2
+            y1 = start_y + row * (bh + gap)
+            if i == len(settings_defs) - 1 and len(settings_defs) % 2 == 1:
+                # Keep the final "back" button centered when item count is odd.
+                x1 = (self.width - bw) / 2
+            else:
+                total_w = bw * 2 + col_gap
+                x1 = (self.width - total_w) / 2 + col * (bw + col_gap)
             x2 = x1 + bw
             y2 = y1 + bh
             self.active_buttons.append({"action": action, "rect": (x1, y1, x2, y2)})

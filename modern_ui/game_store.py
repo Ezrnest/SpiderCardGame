@@ -47,6 +47,17 @@ def load_game(slot: int = 1) -> Core | None:
         return None
 
 
+def clear_game(slot: int = 1) -> bool:
+    path = _slot_path(_valid_slot(slot))
+    if not path.exists() or not path.is_file():
+        return True
+    try:
+        path.unlink()
+        return True
+    except Exception:
+        return False
+
+
 def list_slot_status() -> list[dict]:
     rows = []
     for slot in range(1, SLOT_COUNT + 1):
