@@ -6,7 +6,7 @@ from datetime import date
 from pathlib import Path
 from tkinter import BOTH, Canvas, Tk, messagebox, simpledialog
 
-from base.Core import Card, Core, DUMMY_PLAYER, GameConfig, encodeStack
+from base.Core import CallDeal, Card, CardMove, Core, DUMMY_PLAYER, FreeStack, GameConfig, encodeStack
 from base.Interface import Interface
 from modern_ui.adapter import CoreAdapter
 from modern_ui.card_face import CardFaceRenderer
@@ -14,6 +14,7 @@ from modern_ui.entities import CollectCard, DragState, MovingCard, Particle, Vic
 from modern_ui.game_store import SLOT_COUNT, clear_game, has_saved_game, list_slot_status, load_game, save_game
 from modern_ui.seed_pool_store import choose_seed_for_bucket
 from modern_ui.settings_store import load_settings, save_settings
+from modern_ui.sound_fx import SoundFxManager
 from modern_ui.stats_store import load_stats, profile_key, record_game_lost, record_game_started, record_game_won, save_stats
 from solver.analyzer import SearchLimits, SolverState, solve_state
 from modern_ui.ui_config import (
@@ -144,6 +145,7 @@ class ModernTkInterface(Interface):
         self.victory_panel_visible = False
         self.victory_summary = {}
         self.card_renderer = CardFaceRenderer()
+        self.sound_fx = SoundFxManager()
         self.style_back_images = {}
         self.pil_back_source = None
         self.front_images = {}
@@ -661,6 +663,7 @@ class ModernTkInterface(Interface):
         self.victory_panel_visible = False
         self.message = "胜利动画中..."
         self.mark_game_won_if_needed()
+        self.sound_fx.play_victory()
         if not self.test_mode:
             clear_game(self.save_slot)
             self.slot_status = list_slot_status()
@@ -673,6 +676,12 @@ class ModernTkInterface(Interface):
     def onEvent(self, event):
         self.vm = CoreAdapter.snapshot(self.core)
         self.anim_queue.append(CoreAdapter.event_to_animation(event))
+        if isinstance(event, CardMove):
+            self.sound_fx.play_move()
+        elif isinstance(event, CallDeal):
+            self.sound_fx.play_deal()
+        elif isinstance(event, FreeStack):
+            self.sound_fx.play_collect()
         self.save_current_game()
         self.request_redraw()
         super().onEvent(event)
@@ -1667,10 +1676,24 @@ class ModernTkInterface(Interface):
             if self.current_seed is not None
             else f" | 种子（{seed_source_text}）"
         )
+        elapsed_sec = 0
+        if self.current_game_started_at is not None:
+            elapsed_sec = max(0, int(time.time() - self.current_game_started_at))
+        elapsed_min = elapsed_sec // 60
+        elapsed_remain = elapsed_sec % 60
+        seed_text = str(self.current_seed) if self.current_seed is not None else "-"
+        c.create_text(
+            16,
+            42,
+            anchor="nw",
+            text=f"步数：{self.current_game_actions}  用时：{elapsed_min:02d}:{elapsed_remain:02d}  种子：{seed_text}",
+            fill=theme["hud_subtext"],
+            font=f"Helvetica {self.fs(12)}",
+        )
         if self.SHOW_TOP_LEFT_DETAIL:
             c.create_text(
                 16,
-                42,
+                64,
                 anchor="nw",
                 text=(
                     f"模式：{mode} | 配置：{profile} | 风格：{self.display_style_name()} | "

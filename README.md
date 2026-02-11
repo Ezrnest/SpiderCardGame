@@ -39,6 +39,12 @@ implementation of two kinds of interfaces.
   - `V`: heuristic demo one step (no solver search)
   - `A`: solver auto-play (search then auto execute plan)
   - `X`: stop solver demo / auto-play
+  - Sound effects: move (`唰`), deal (`发牌`), complete-suit collect (`刷`), and victory melody (`欢乐颂`片段) are played automatically when triggered.
+  - Real-sample wav override paths (higher priority than generated sfx):
+    - `modern_ui/assets/sfx/real/move_card_real.wav`
+    - `modern_ui/assets/sfx/real/deal_card_real.wav`
+    - `modern_ui/assets/sfx/real/collect_stack_real.wav`
+    - `modern_ui/assets/sfx/real/victory_ode_to_joy_real.wav`
   - `S`: open settings page
   - `M`: back to menu
   - `H`: Hint+ (top candidate moves with risk notes)
