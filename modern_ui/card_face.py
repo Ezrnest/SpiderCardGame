@@ -2,6 +2,13 @@ from modern_ui.ui_config import NUMS, SUIT_SYMBOLS
 
 
 class CardFaceRenderer:
+    FOUR_SUIT_COLORS = {
+        0: "#111827",  # Spade: dark gray/black
+        1: "#dc2626",  # Heart: red
+        2: "#2563eb",  # Club: blue
+        3: "#16a34a",  # Diamond: green
+    }
+
     def suit_symbol(self, suit):
         return SUIT_SYMBOLS[suit]
 
@@ -42,9 +49,12 @@ class CardFaceRenderer:
 
         rank = NUMS[num]
         suit_text = self.suit_symbol(suit)
-        suit_color = "#dc2626" if suit in (1, 3) else "#111827"
+        if card_style == "FourColorClassic":
+            suit_color = self.FOUR_SUIT_COLORS.get(suit, "#111827")
+        else:
+            suit_color = "#dc2626" if suit in (1, 3) else "#111827"
 
-        if card_style == "Classic":
+        if card_style in ("Classic", "FourColorClassic"):
             canvas.create_text(x + 8, y + 8, anchor="nw", text=f"{rank}{suit_text}", fill=suit_color, font=f"Helvetica {fs(12)} bold")
             canvas.create_text(x + cw - 8, y + ch - 8, anchor="se", text=f"{rank}{suit_text}", fill=suit_color, font=f"Helvetica {fs(12)} bold")
             canvas.create_text(x + cw * 0.5, y + ch * 0.52, text=suit_text, fill=suit_color, font=f"Helvetica {fs(24)} bold")
@@ -70,7 +80,7 @@ class CardFaceRenderer:
             canvas.create_image(x, y, anchor="nw", image=back_image)
             return
 
-        if card_style == "Classic":
+        if card_style in ("Classic", "FourColorClassic"):
             for i in range(4):
                 yy = y + 12 + i * (ch - 24) / 3
                 canvas.create_line(x + 10, yy, x + cw - 10, yy, fill=theme["deck_outline"], width=1)

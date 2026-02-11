@@ -990,7 +990,7 @@ class ModernTkInterface(Interface):
                 if card_idx < 0:
                     continue
                 card = stacks[stack_idx].cards[card_idx]
-                sx, sy = self.deck_position()
+                sx, sy = self.deck_spawn_position()
                 ex, ey = self.card_position(stack_idx, card_idx)
                 cards.append(
                     MovingCard(
@@ -1244,18 +1244,24 @@ class ModernTkInterface(Interface):
     def draw_base_and_hud(self, c):
         theme = self.theme
         deck_x, deck_y = self.deck_position()
-        cw, ch = self.card_size()
+        deck_w, deck_h = self.deck_size()
 
         c.create_rectangle(
             deck_x,
             deck_y,
-            deck_x + cw,
-            deck_y + ch,
+            deck_x + deck_w,
+            deck_y + deck_h,
             fill=theme["deck_fill"],
             outline=theme["deck_outline"],
             width=2,
         )
-        c.create_text(deck_x + cw / 2, deck_y + ch / 2, text=str(self.vm.base_count), fill=theme["hud_text"], font=f"Helvetica {self.fs(14)} bold")
+        c.create_text(
+            deck_x + deck_w / 2,
+            deck_y + deck_h / 2,
+            text=str(self.vm.base_count),
+            fill=theme["hud_text"],
+            font=f"Helvetica {self.fs(14)} bold",
+        )
 
         c.create_text(16, 16, anchor="nw", text=f"Finished: {self.vm.finished_count}", fill=theme["hud_text"], font=f"Helvetica {self.fs(16)} bold")
         mode = "Daily" if self.daily_mode else "Normal"
@@ -1654,8 +1660,8 @@ class ModernTkInterface(Interface):
 
     def is_point_in_deck(self, x, y):
         dx, dy = self.deck_position()
-        cw, ch = self.card_size()
-        return dx <= x <= dx + cw and dy <= y <= dy + ch
+        dw, dh = self.deck_size()
+        return dx <= x <= dx + dw and dy <= y <= dy + dh
 
     def spawn_firework_burst(self, x, y, count):
         now = time.time()
@@ -1736,7 +1742,19 @@ class ModernTkInterface(Interface):
         return x, y + self.visible_step() * card_idx
 
     def deck_position(self):
-        cw, _ = self.card_size()
-        x = self.width - cw - 24
+        dw, _ = self.deck_size()
+        x = self.width - dw - 24
         y = 20
         return x, y
+
+    def deck_size(self):
+        # Render the deal pile as a horizontal card slot to avoid overlap with stacks.
+        cw, ch = self.card_size()
+        return ch, cw
+
+    def deck_spawn_position(self):
+        dx, dy = self.deck_position()
+        dw, dh = self.deck_size()
+        cw, ch = self.card_size()
+        # Emit dealing animation from the center of the horizontal deck slot.
+        return dx + (dw - cw) * 0.5, dy + (dh - ch) * 0.5

@@ -15,7 +15,7 @@ NUMS = ("A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K")
 SUIT_COUNT_ORDER = (1, 2, 3, 4)
 DIFFICULTY_BUCKET_ORDER = ("Easy", "Medium", "Hard")
 LEGACY_DIFFICULTY_TO_PROFILE = {"Easy": (1, "Easy"), "Medium": (2, "Medium"), "Hard": (4, "Hard")}
-CARD_STYLE_ORDER = ("Classic", "Minimal", "Neo", "ArtDeck", "NeoGrid", "VintageGold", "SakuraInk")
+CARD_STYLE_ORDER = ("Classic", "FourColorClassic", "Minimal", "Neo", "ArtDeck", "NeoGrid", "VintageGold", "SakuraInk")
 TEXTURED_STYLE_ASSETS = {
     "ArtDeck": {"front_dir": "artdeck", "back_file": "artdeck_back.png"},
     "NeoGrid": {"front_dir": "neogrid", "back_file": "neogrid_back.png"},

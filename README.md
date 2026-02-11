@@ -20,7 +20,7 @@ implementation of two kinds of interfaces.
 - Settings page:
   - `Suit Count`: `1 / 2 / 3 / 4`
   - `Difficulty Bucket`: `Easy / Medium / Hard`
-  - `Card Style`: `Classic / Minimal / Neo / ArtDeck / NeoGrid / VintageGold / SakuraInk` (front and back are unified per style)
+  - `Card Style`: `Classic / FourColorClassic / Minimal / Neo / ArtDeck / NeoGrid / VintageGold / SakuraInk` (front and back are unified per style)
   - `Theme`: `Forest / Ocean / Sunset`
   - `Font Scale`: `Small / Normal / Large / X-Large / Huge`
   - Settings are persisted to `modern_ui/settings.ini`.
