@@ -5,7 +5,7 @@ import heapq
 import json
 import math
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable, Optional
 
 from base.Core import Card, GameConfig
@@ -70,6 +70,15 @@ class SearchPolicy:
 
 
 DEFAULT_POLICY = SearchPolicy()
+
+
+@dataclass(frozen=True, slots=True)
+class SearchStage:
+    name: str
+    policy: SearchPolicy
+    time_share: float
+    node_share: float
+    frontier_share: float = 1.0
 
 
 @dataclass(slots=True)
@@ -625,6 +634,124 @@ def _policy_is_complete(policy: SearchPolicy) -> bool:
     )
 
 
+def _build_stage_plan(suits: Optional[int]) -> tuple[SearchStage, ...]:
+    strict = DEFAULT_POLICY
+    balanced = replace(
+        DEFAULT_POLICY,
+        lock_same_suit_runs=False,
+        macro_max_steps=3,
+    )
+    wide = replace(
+        DEFAULT_POLICY,
+        lock_same_suit_runs=False,
+        require_same_suit_destination_when_available=False,
+        avoid_empty_for_short_moves=False,
+        defer_deal_until_no_moves=False,
+        macro_chain_enabled=False,
+        taboo_immediate_reverse=False,
+    )
+
+    if suits == 1:
+        return (
+            SearchStage("strict", strict, 0.55, 0.50),
+            SearchStage("balanced", balanced, 0.45, 0.50),
+        )
+    if suits == 2:
+        return (
+            SearchStage("strict", strict, 0.40, 0.35),
+            SearchStage("balanced", balanced, 0.35, 0.35),
+            SearchStage("wide", wide, 0.25, 0.30),
+        )
+    return (
+        SearchStage("strict", strict, 0.30, 0.25),
+        SearchStage("balanced", balanced, 0.35, 0.35),
+        SearchStage("wide", wide, 0.35, 0.40),
+    )
+
+
+def _allocate_stage_limits(base: SearchLimits, stage: SearchStage) -> SearchLimits:
+    return SearchLimits(
+        max_nodes=max(2_000, int(base.max_nodes * stage.node_share)),
+        max_seconds=max(0.05, base.max_seconds * stage.time_share),
+        max_frontier=max(10_000, int(base.max_frontier * stage.frontier_share)),
+    )
+
+
+def _run_staged_search(
+    initial_state: SolverState,
+    limits: SearchLimits,
+    suits: Optional[int],
+) -> tuple[SolveResult, list[dict], str]:
+    stages = _build_stage_plan(suits)
+    stage_details: list[dict] = []
+    final_result: Optional[SolveResult] = None
+    final_stage = stages[-1].name
+    totals = {
+        "expanded_nodes": 0,
+        "generated_nodes": 0,
+        "unique_states": 0,
+        "dead_end_nodes": 0,
+        "duplicate_states_skipped": 0,
+        "elapsed_ms": 0.0,
+        "max_frontier": 0,
+        "max_depth": 0,
+        "weighted_branching_num": 0.0,
+        "weighted_branching_den": 0,
+    }
+
+    for stage in stages:
+        stage_limits = _allocate_stage_limits(limits, stage)
+        result = solve_state(initial_state, limits=stage_limits, policy=stage.policy)
+        stage_details.append(
+            {
+                "name": stage.name,
+                "status": result.status,
+                "reason": result.stop_reason,
+                "elapsed_ms": round(result.elapsed_ms, 3),
+                "expanded_nodes": result.expanded_nodes,
+                "generated_nodes": result.generated_nodes,
+                "unique_states": result.unique_states,
+                "duplicates": result.duplicate_states_skipped,
+                "max_frontier": result.max_frontier,
+            }
+        )
+        totals["expanded_nodes"] += result.expanded_nodes
+        totals["generated_nodes"] += result.generated_nodes
+        totals["unique_states"] += result.unique_states
+        totals["dead_end_nodes"] += result.dead_end_nodes
+        totals["duplicate_states_skipped"] += result.duplicate_states_skipped
+        totals["elapsed_ms"] += result.elapsed_ms
+        totals["max_frontier"] = max(totals["max_frontier"], result.max_frontier)
+        totals["max_depth"] = max(totals["max_depth"], result.max_depth)
+        totals["weighted_branching_num"] += result.avg_branching * max(1, result.expanded_nodes)
+        totals["weighted_branching_den"] += max(1, result.expanded_nodes)
+        final_result = result
+        final_stage = stage.name
+        if result.status in ("solved", "proven_unsolvable"):
+            break
+
+    assert final_result is not None
+    merged = SolveResult(
+        status=final_result.status,
+        stop_reason=final_result.stop_reason,
+        solution=final_result.solution,
+        solution_states=final_result.solution_states,
+        expanded_nodes=totals["expanded_nodes"],
+        generated_nodes=totals["generated_nodes"],
+        unique_states=totals["unique_states"],
+        max_frontier=totals["max_frontier"],
+        dead_end_nodes=totals["dead_end_nodes"],
+        duplicate_states_skipped=totals["duplicate_states_skipped"],
+        avg_branching=totals["weighted_branching_num"] / max(1, totals["weighted_branching_den"]),
+        elapsed_ms=totals["elapsed_ms"],
+        max_depth=totals["max_depth"],
+        solution_revealed=final_result.solution_revealed,
+        solution_freed=final_result.solution_freed,
+        solution_deals=final_result.solution_deals,
+    )
+    return merged, stage_details, final_stage
+
+
 def _reconstruct(
     goal: SolverState,
     parent: dict[SolverState, tuple[Optional[SolverState], Optional[_Transition]]],
@@ -821,10 +948,28 @@ def analyze_state(
     seed: Optional[int] = None,
     limits: SearchLimits = SearchLimits(),
     policy: SearchPolicy = DEFAULT_POLICY,
+    staged: bool = True,
 ) -> AnalyzeResult:
     """Run solver and estimate difficulty from search metrics."""
 
-    solved = solve_state(initial_state, limits, policy=policy)
+    if staged:
+        solved, stage_details, final_stage = _run_staged_search(initial_state, limits, suits)
+    else:
+        solved = solve_state(initial_state, limits, policy=policy)
+        stage_details = [
+            {
+                "name": "single",
+                "status": solved.status,
+                "reason": solved.stop_reason,
+                "elapsed_ms": round(solved.elapsed_ms, 3),
+                "expanded_nodes": solved.expanded_nodes,
+                "generated_nodes": solved.generated_nodes,
+                "unique_states": solved.unique_states,
+                "duplicates": solved.duplicate_states_skipped,
+                "max_frontier": solved.max_frontier,
+            }
+        ]
+        final_stage = "single"
 
     metrics = {
         "expanded_nodes": solved.expanded_nodes,
@@ -836,6 +981,8 @@ def analyze_state(
         "avg_branching": round(solved.avg_branching, 4),
         "elapsed_ms": round(solved.elapsed_ms, 3),
         "max_depth": solved.max_depth,
+        "final_stage": final_stage,
+        "stages": stage_details,
     }
 
     if solved.status == "solved":
@@ -849,18 +996,26 @@ def analyze_state(
 
         dead_ratio = solved.dead_end_nodes / max(1, solved.expanded_nodes)
         choice_pressure = 1.0 / max(1.0, avg_legal)
-        suit_factor = max(0, (suits or 1) - 1)
+        suit_norm = (max(1, suits or 1) - 1) / 3.0
+        expansion_norm = min(1.0, math.log1p(solved.expanded_nodes) / math.log1p(max(2_000, limits.max_nodes)))
+        depth_norm = min(1.0, len(solved.solution) / 180.0)
+        pressure_norm = min(1.0, choice_pressure * 10.0)
+        forced_norm = min(1.0, forced_ratio * 2.0)
+        dead_norm = min(1.0, dead_ratio * 8.0)
+        branch_norm = min(1.0, solved.avg_branching / 35.0)
+        deal_norm = min(1.0, solved.solution_deals / 5.0)
 
-        raw = (
-            9.0 * math.log1p(solved.expanded_nodes)
-            + 0.6 * len(solved.solution)
-            + 22.0 * dead_ratio
-            + 20.0 * choice_pressure
-            + 10.0 * forced_ratio
-            + 8.0 * solved.solution_deals
-            + 4.0 * suit_factor
+        score = 100.0 * (
+            0.22 * expansion_norm
+            + 0.22 * depth_norm
+            + 0.14 * pressure_norm
+            + 0.14 * forced_norm
+            + 0.10 * dead_norm
+            + 0.08 * branch_norm
+            + 0.06 * deal_norm
+            + 0.04 * suit_norm
         )
-        score = max(0.0, min(100.0, raw))
+        score = max(0.0, min(100.0, score))
         band = _difficulty_band(score)
 
         metrics.update(
@@ -872,6 +1027,16 @@ def analyze_state(
                 "avg_legal_on_path": round(avg_legal, 4),
                 "forced_ratio": round(forced_ratio, 4),
                 "dead_end_ratio": round(dead_ratio, 4),
+                "difficulty_components": {
+                    "expansion_norm": round(expansion_norm, 4),
+                    "depth_norm": round(depth_norm, 4),
+                    "pressure_norm": round(pressure_norm, 4),
+                    "forced_norm": round(forced_norm, 4),
+                    "dead_norm": round(dead_norm, 4),
+                    "branch_norm": round(branch_norm, 4),
+                    "deal_norm": round(deal_norm, 4),
+                    "suit_norm": round(suit_norm, 4),
+                },
             }
         )
 
@@ -902,6 +1067,15 @@ def analyze_state(
         )
 
     metrics["reason"] = solved.stop_reason
+    effort = min(
+        100.0,
+        100.0
+        * (
+            0.70 * min(1.0, math.log1p(solved.expanded_nodes) / math.log1p(max(2_000, limits.max_nodes)))
+            + 0.30 * min(1.0, solved.elapsed_ms / max(1.0, limits.max_seconds * 1000.0))
+        ),
+    )
+    metrics["effort_score"] = round(effort, 3)
     return AnalyzeResult(
         seed=seed,
         suits=suits,
@@ -920,12 +1094,13 @@ def analyze_seed(
     suits: int = 4,
     limits: SearchLimits = SearchLimits(),
     policy: SearchPolicy = DEFAULT_POLICY,
+    staged: bool = True,
 ) -> AnalyzeResult:
     cfg = GameConfig()
     cfg.seed = seed
     cfg.suits = suits
     state = build_initial_state(cfg)
-    return analyze_state(initial_state=state, suits=suits, seed=seed, limits=limits, policy=policy)
+    return analyze_state(initial_state=state, suits=suits, seed=seed, limits=limits, policy=policy, staged=staged)
 
 
 def analyze_seeds(
@@ -933,8 +1108,9 @@ def analyze_seeds(
     suits: int = 4,
     limits: SearchLimits = SearchLimits(),
     policy: SearchPolicy = DEFAULT_POLICY,
+    staged: bool = True,
 ) -> list[AnalyzeResult]:
-    return [analyze_seed(seed=seed, suits=suits, limits=limits, policy=policy) for seed in seeds]
+    return [analyze_seed(seed=seed, suits=suits, limits=limits, policy=policy, staged=staged) for seed in seeds]
 
 
 def _parse_args() -> argparse.Namespace:
@@ -944,6 +1120,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--max-nodes", type=int, default=200_000, help="Search node limit.")
     parser.add_argument("--max-seconds", type=float, default=2.0, help="Search time limit in seconds.")
     parser.add_argument("--max-frontier", type=int, default=500_000, help="Search frontier size limit.")
+    parser.add_argument("--single-stage", action="store_true", help="Disable staged widening search.")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print json output.")
     return parser.parse_args()
 
@@ -951,7 +1128,13 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     args = _parse_args()
     limits = SearchLimits(max_nodes=args.max_nodes, max_seconds=args.max_seconds, max_frontier=args.max_frontier)
-    results = analyze_seeds(args.seed, suits=args.suits, limits=limits, policy=DEFAULT_POLICY)
+    results = analyze_seeds(
+        args.seed,
+        suits=args.suits,
+        limits=limits,
+        policy=DEFAULT_POLICY,
+        staged=not args.single_stage,
+    )
 
     payload = [result.to_dict() for result in results]
     if len(payload) == 1:

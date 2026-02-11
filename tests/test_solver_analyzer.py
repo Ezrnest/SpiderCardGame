@@ -48,6 +48,8 @@ class SolverAnalyzerTestCase(unittest.TestCase):
         self.assertTrue(result.solvable)
         self.assertIsNotNone(result.difficulty_score)
         self.assertIn("solution_len", result.metrics)
+        self.assertIn("difficulty_components", result.metrics)
+        self.assertIn("stages", result.metrics)
 
     def test_analyze_seed_returns_structured_result(self):
         result = analyze_seed(
@@ -60,6 +62,7 @@ class SolverAnalyzerTestCase(unittest.TestCase):
         self.assertIn("expanded_nodes", result.metrics)
         self.assertIn("elapsed_ms", result.metrics)
         self.assertIn("duplicate_states_skipped", result.metrics)
+        self.assertIn("stages", result.metrics)
 
     def test_solver_skips_duplicate_states(self):
         stacks = (
