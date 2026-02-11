@@ -11,7 +11,6 @@
 
 python -m solver.seed_pool_builder \
   --suits 1 \
-  --start-seed 1 \
   --count 50 \
   --workers 8 \
   --max-seconds 5 \
@@ -21,9 +20,8 @@ python -m solver.seed_pool_builder \
 
 
 python -m solver.seed_pool_builder \
-  --suits 4 \
-  --start-seed 1 \
-  --count 500 \
+  --suits 2 \
+  --count 10 \
   --workers 8 \
   --max-seconds 10 \
   --max-nodes 2000000 \

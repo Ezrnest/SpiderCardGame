@@ -5,6 +5,7 @@ import csv
 import json
 import math
 import os
+import random
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures import ThreadPoolExecutor
@@ -202,7 +203,7 @@ def _derive_output_paths(meta_json_path: Path) -> tuple[Path, Path]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build seed pools by quantile-bucketed difficulty.")
     parser.add_argument("--suits", type=int, choices=(1, 2, 3, 4), required=True, help="Suit count.")
-    parser.add_argument("--start-seed", type=int, required=True, help="Start seed inclusive.")
+    parser.add_argument("--start-seed", type=int, default=None, help="Start seed inclusive. Default: random.")
     parser.add_argument("--count", type=int, required=True, help="How many seeds to scan.")
     parser.add_argument("--workers", type=int, default=_default_workers(), help="Parallel workers.")
     parser.add_argument("--max-seconds", type=float, default=4.0, help="Per-seed search time budget.")
@@ -381,7 +382,6 @@ def _build_rows_csv_rows(merged_rows: list[SeedRow], buckets: dict[str, list[See
                 "status": row.status,
                 "score": score,
                 "bucket": bucket_map.get(row.seed, ""),
-                "band": ("" if row.band is None else row.band),
                 "reason": ("" if row.reason is None else row.reason),
                 "elapsed_ms": f"{float(row.elapsed_ms):.3f}",
                 "expanded_nodes": int(row.expanded_nodes),
@@ -393,6 +393,9 @@ def _build_rows_csv_rows(merged_rows: list[SeedRow], buckets: dict[str, list[See
 
 def main() -> None:
     args = parse_args()
+    if args.start_seed is None:
+        args.start_seed = random.SystemRandom().randrange(0, 2_147_483_647)
+        print(f"start-seed not set; selected random start_seed={args.start_seed}")
     seeds = list(range(args.start_seed, args.start_seed + args.count))
     meta_json_path = Path(args.out).expanduser()
     meta_json_path.parent.mkdir(parents=True, exist_ok=True)
@@ -423,7 +426,7 @@ def main() -> None:
         _write_json_atomic(meta_json_path, payload)
         _write_csv_atomic(
             rows_csv_path,
-            fieldnames=["seed", "status", "score", "bucket", "band", "reason", "elapsed_ms", "expanded_nodes", "unique_states"],
+            fieldnames=["seed", "status", "score", "bucket", "reason", "elapsed_ms", "expanded_nodes", "unique_states"],
             rows=_build_rows_csv_rows(merged_rows, buckets),
         )
         last_save_at = now
@@ -457,7 +460,7 @@ def main() -> None:
     _write_json_atomic(meta_json_path, payload)
     _write_csv_atomic(
         rows_csv_path,
-        fieldnames=["seed", "status", "score", "bucket", "band", "reason", "elapsed_ms", "expanded_nodes", "unique_states"],
+        fieldnames=["seed", "status", "score", "bucket", "reason", "elapsed_ms", "expanded_nodes", "unique_states"],
         rows=_build_rows_csv_rows(merged_rows, buckets),
     )
     stats = payload["stats"]
